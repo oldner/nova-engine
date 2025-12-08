@@ -1,0 +1,27 @@
+{
+  "name": "My Nova Project",
+  "width": 1920,
+  "height": 1080,
+  "scenes": {
+    "start": {
+      "id": "start",
+      "name": "Start Scene",
+      "background": null,
+      "elements": [
+        {
+          "id": "welcome_text",
+          "element_type": "Text",
+          "x": 100.0,
+          "y": 100.0,
+          "width": 400.0,
+          "height": 100.0,
+          "content": "Welcome to Nova Engine",
+          "z_index": 0,
+          "properties": {}
+        }
+      ]
+    }
+  },
+  "characters": {},
+  "active_scene_id": "start"
+}
