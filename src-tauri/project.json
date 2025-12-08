@@ -2,26 +2,29 @@
   "name": "My Nova Project",
   "width": 1920,
   "height": 1080,
-  "scenes": {
-    "start": {
-      "id": "start",
-      "name": "Start Scene",
-      "background": null,
-      "elements": [
-        {
-          "id": "welcome_text",
-          "element_type": "Text",
-          "x": 100.0,
-          "y": 100.0,
-          "width": 400.0,
-          "height": 100.0,
-          "content": "Welcome to Nova Engine",
-          "z_index": 0,
-          "properties": {}
+  "seasons": {
+    "s_1": {
+      "id": "s_1",
+      "name": "Season 1",
+      "episodes": {
+        "ep_1": {
+          "id": "ep_1",
+          "name": "Episode 1",
+          "pages": {
+            "page_1": {
+              "id": "page_1",
+              "name": "Page 1",
+              "background": null,
+              "elements": []
+            }
+          }
         }
-      ]
+      }
     }
   },
   "characters": {},
-  "active_scene_id": "start"
+  "scriptGraphs": {},
+  "activeSeasonId": "s_1",
+  "activeEpisodeId": "ep_1",
+  "activePageId": "page_1"
 }

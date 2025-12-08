@@ -17,22 +17,38 @@ export interface SceneElement {
     selected?: boolean;
 }
 
-export interface SceneData {
+export interface Page {
     id: string;
     name: string;
+    background: string | null;
     elements: SceneElement[];
 }
 
-export type Scene = SceneData; // Alias for consistency with Rust
+export type SceneData = Page; // Keep alias for now to minimize refactoring
+
+export interface Episode {
+    id: string;
+    name: string;
+    pages: Record<string, Page>; // Rust HashMap -> JS Object
+}
+
+export interface Season {
+    id: string;
+    name: string;
+    episodes: Record<string, Episode>;
+}
 
 export interface Project {
     name: string;
-    activeSceneId: string | null;
-    scenes: Record<string, Scene>;
+    seasons: Record<string, Season>;
     scriptGraphs: Record<string, ScriptGraph>;
+
+    activeSeasonId: string | null;
+    activeEpisodeId: string | null;
+    activePageId: string | null;
 }
 
-export type NodeType = 'Start' | 'Dialogue' | 'Choice' | 'Jump' | 'SetFlag';
+export type NodeType = 'start' | 'text' | 'choice' | 'jump' | 'set_flag' | 'change_page';
 
 export interface ScriptNode {
     id: string;

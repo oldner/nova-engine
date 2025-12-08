@@ -7,16 +7,35 @@ pub struct Project {
     pub name: String,
     pub width: u32,
     pub height: u32,
-    pub scenes: HashMap<String, Scene>,
+    pub seasons: HashMap<String, Season>,
     pub characters: HashMap<String, Character>,
-    #[serde(default)] // Allow loading old projects without this field
+    #[serde(default)] 
     pub script_graphs: HashMap<String, ScriptGraph>,
-    pub active_scene_id: Option<String>,
+    // Navigation State
+    pub active_season_id: Option<String>,
+    pub active_episode_id: Option<String>,
+    pub active_page_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct Scene {
+pub struct Season {
+    pub id: String,
+    pub name: String,
+    pub episodes: HashMap<String, Episode>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct Episode {
+    pub id: String,
+    pub name: String,
+    pub pages: HashMap<String, Page>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct Page {
     pub id: String,
     pub name: String,
     pub background: Option<String>,
@@ -41,11 +60,10 @@ pub struct SceneElement {
     pub y: f32,
     pub width: f32,
     pub height: f32,
-    pub content: String, // Text content or image path
+    pub content: String,
     pub z_index: i32,
-    pub properties: HashMap<String, String>, // Flexible property storage
+    pub properties: HashMap<String, String>,
 }
-
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -100,14 +118,43 @@ pub struct ScriptConnection {
 
 impl Default for Project {
     fn default() -> Self {
+        let mut seasons = HashMap::new();
+        let mut episodes = HashMap::new();
+        let mut pages = HashMap::new();
+
+        // Create Default Content
+        let page_id = "page_1".to_string();
+        pages.insert(page_id.clone(), Page {
+            id: page_id.clone(),
+            name: "Page 1".to_string(),
+            background: None,
+            elements: vec![],
+        });
+
+        let episode_id = "ep_1".to_string();
+        episodes.insert(episode_id.clone(), Episode {
+            id: episode_id.clone(),
+            name: "Episode 1".to_string(),
+            pages,
+        });
+
+        let season_id = "s_1".to_string();
+        seasons.insert(season_id.clone(), Season {
+            id: season_id.clone(),
+            name: "Season 1".to_string(),
+            episodes,
+        });
+
         Self {
             name: "New Project".to_string(),
             width: 1920,
             height: 1080,
-            scenes: HashMap::new(),
+            seasons,
             characters: HashMap::new(),
             script_graphs: HashMap::new(),
-            active_scene_id: None,
+            active_season_id: Some(season_id),
+            active_episode_id: Some(episode_id),
+            active_page_id: Some(page_id),
         }
     }
 }

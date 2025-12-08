@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import type { ScriptGraph, ScriptNode, ScriptConnection } from '../types';
+import ScriptNodeComponent from './ScriptNode.vue';
 
 const props = defineProps<{
   graph: ScriptGraph;
@@ -65,19 +66,22 @@ const getMousePos = (e: MouseEvent) => {
 };
 
 const getNodePorts = (type: string, data?: any) => {
-    switch (type) {
-        case 'Start': return { inputs: [], outputs: [{ id: 'next', label: '' }] };
-        case 'Dialogue': return { inputs: [{ id: 'in', label: '' }], outputs: [{ id: 'next', label: '' }] };
-        case 'Choice': {
+    const t = type.toLowerCase();
+    switch (t) {
+        case 'start': return { inputs: [], outputs: [{ id: 'flow', label: '' }] };
+        case 'text': 
+        case 'dialogue': return { inputs: [{ id: 'in', label: '' }], outputs: [{ id: 'flow', label: '' }] };
+        case 'choice': {
             const options = data?.options || [];
             if (options.length === 0) return { inputs: [{ id: 'in', label: '' }], outputs: [] };
             return { 
                 inputs: [{ id: 'in', label: '' }], 
-                outputs: options.map((opt: any) => ({ id: opt.id, label: opt.text })) 
+                outputs: options.map((opt: any) => ({ id: `out-${opt.id}`, label: opt.text })) 
             };
         }
-        case 'SetFlag': return { inputs: [{ id: 'in', label: '' }], outputs: [{ id: 'next', label: '' }] };
-        default: return { inputs: [{ id: 'in', label: '' }], outputs: [{ id: 'next', label: '' }] };
+        case 'set_flag': return { inputs: [{ id: 'in', label: '' }], outputs: [{ id: 'flow', label: '' }] };
+        case 'change_page': return { inputs: [{ id: 'in', label: '' }], outputs: [] };
+        default: return { inputs: [{ id: 'in', label: '' }], outputs: [{ id: 'flow', label: '' }] };
     }
 };
 
@@ -96,16 +100,13 @@ const getPortPosition = (node: ScriptNode, portId: string, type: 'in' | 'out') =
     const startY = headerHeight + 12; // 12px padding top of main row
     const y = node.y + startY + (index * (portHeight + portSpacing)) + (portHeight / 2);
 
-    const width = 200; 
+    const width = 240; // Match CSS width 
     const x = type === 'in' ? node.x : (node.x + width);
 
     return { x, y };
 };
 
-// ...
-
 const handleConnectionContextMenu = (e: MouseEvent, connId: string) => {
-    console.log('Connection Context Menu:', connId);
     showContextMenu.value = true;
     contextMenuTarget.value = 'connection';
     targetConnectionId.value = connId;
@@ -132,6 +133,7 @@ const handleContextMenu = (e: MouseEvent) => {
     const pos = getMousePos(e);
     contextMenuWorldPos.value = pos;
 };
+
 const getPath = (conn: ScriptConnection) => {
     const fromNode = props.graph.nodes.find(n => n.id === conn.fromNode);
     const toNode = props.graph.nodes.find(n => n.id === conn.toNode);
@@ -166,7 +168,6 @@ const getTempPath = () => {
 
 
 // --- Event Handlers ---
-
 const handleWheel = (e: WheelEvent) => {
   e.preventDefault();
   const zoomIntensity = 0.1;
@@ -235,7 +236,6 @@ const handleNodeMouseUp = (e: MouseEvent, nodeId: string) => {
     // Check if we are dropping a link onto this node
     if (linkingState.value && linkingState.value.active) {
         e.stopPropagation(); 
-        console.log('Link Dropped on Node:', nodeId);
         
         const node = props.graph.nodes.find(n => n.id === nodeId)!;
         const ports = getNodePorts(node.type, node.data);
@@ -250,7 +250,6 @@ const handleNodeMouseUp = (e: MouseEvent, nodeId: string) => {
             const targetPort = targetPorts[0];
             handlePortMouseUp(e, nodeId, targetPort.id, targetType);
         } else {
-             console.log(`No ${targetType} ports on target node`);
              linkingState.value = null;
         }
     }
@@ -259,7 +258,6 @@ const handleNodeMouseUp = (e: MouseEvent, nodeId: string) => {
 const handlePortMouseDown = (e: MouseEvent, nodeId: string, portName: string, type: 'in' | 'out') => {
     e.stopPropagation();
     e.preventDefault(); 
-    console.log('Port Mouse Down:', nodeId, portName, type);
 
     // Support connecting 'out' -> 'in' OR starting from 'in' (reverse)
     const isReverse = type === 'in';
@@ -273,12 +271,10 @@ const handlePortMouseDown = (e: MouseEvent, nodeId: string, portName: string, ty
         mouseY: pos.y,
         isReverse // Track direction
     };
-    console.log('Linking Started (Reverse: ' + isReverse + '):', linkingState.value);
 };
 
 const handlePortMouseUp = (e: MouseEvent, nodeId: string, portName: string, type: 'in' | 'out') => {
     e.preventDefault();
-    console.log('Port Mouse Up:', nodeId, portName, type);
 
     if (linkingState.value && linkingState.value.active) {
         // Source info
@@ -289,7 +285,6 @@ const handlePortMouseUp = (e: MouseEvent, nodeId: string, portName: string, type
         const isValid = (isReverse && type === 'out') || (!isReverse && type === 'in');
 
         if (isValid) {
-            console.log('Linking Completed');
             const newConnection: ScriptConnection = {
                 id: `conn_${Date.now()}`,
                 fromNode: isReverse ? nodeId : sourceNode!,
@@ -317,17 +312,17 @@ const handleKeyUp = (e: KeyboardEvent) => {
 };
 
 const addNode = (type: any) => {
-    console.log('Adding Node:', type);
     const newNode = {
         id: `node_${Date.now()}`,
         type,
         x: contextMenuWorldPos.value.x,
         y: contextMenuWorldPos.value.y,
-        data: { text: "New Logic", options: [] }
+        data: { text: "...", options: [] }
     };
     props.graph.nodes.push(newNode);
     showContextMenu.value = false;
 };
+
 
 const handleGlobalClick = () => {
     showContextMenu.value = false;
@@ -373,9 +368,10 @@ onUnmounted(() => {
     <!-- ... (Context Menu) ... -->
     <div v-if="showContextMenu" class="context-menu" :style="{ top: contextMenuPos.y + 'px', left: contextMenuPos.x + 'px' }">
         <template v-if="contextMenuTarget === 'canvas'">
-            <div class="menu-item" @click="addNode('Dialogue')">💬 Add Dialogue</div>
-            <div class="menu-item" @click="addNode('Choice')">🔀 Add Choice</div>
-            <div class="menu-item" @click="addNode('SetFlag')">🚩 Set Flag</div>
+            <div class="menu-item" @click="addNode('text')">💬 Add Dialogue</div>
+            <div class="menu-item" @click="addNode('choice')">🔀 Add Choice</div>
+            <div class="menu-item" @click="addNode('change_page')">🔗 Change Page</div>
+            <div class="menu-item" @click="addNode('set_flag')">🚩 Set Flag</div>
         </template>
         <template v-else-if="contextMenuTarget === 'connection'">
             <div class="menu-item delete" @click="deleteConnection">🗑️ Delete</div>
@@ -414,59 +410,18 @@ onUnmounted(() => {
             />
         </svg>
 
-        <!-- Nodes Layer (HTML) -->
+        <!-- Nodes Layer (Components) -->
         <div class="nodes-layer">
-            <div 
-                v-for="node in graph.nodes" 
-                :key="node.id" 
-                class="script-node" 
-                :class="{ selected: node.id === selectedNodeId }"
-                :style="{ left: node.x + 'px', top: node.y + 'px' }"
-                @mousedown="(e) => handleNodeMouseDown(e, node.id)"
-                @mouseup="(e) => handleNodeMouseUp(e, node.id)"
-                @click.stop
-            >
-                <div class="node-header">{{ node.type }}</div>
-                
-                <div class="node-main-row">
-                    <!-- Inputs Column -->
-                    <div class="inputs-col">
-                         <div 
-                            v-for="port in getNodePorts(node.type, node.data).inputs" 
-                            :key="port.id"
-                            class="port-wrapper input"
-                        >
-                            <div 
-                                class="node-port input"
-                                @mouseup.stop="(e) => handlePortMouseUp(e, node.id, port.id, 'in')" 
-                                @mousedown.stop="(e) => handlePortMouseDown(e, node.id, port.id, 'in')"
-                                :title="port.label"
-                            ></div>
-                        </div>
-                    </div>
-
-                    <!-- Body Column -->
-                    <div class="body-col">
-                        <div v-if="node.data.character" class="char-label">{{ node.data.character }}</div>
-                        <div class="node-text">{{ node.data.text || '...' }}</div>
-                    </div>
-
-                    <!-- Outputs Column -->
-                    <div class="outputs-col">
-                        <div 
-                            v-for="port in getNodePorts(node.type, node.data).outputs" 
-                            :key="port.id"
-                            class="port-wrapper output"
-                        >
-                            <span v-if="port.label" class="port-label">{{ port.label }}</span>
-                            <div 
-                                class="node-port output"
-                                @mousedown.stop="(e) => handlePortMouseDown(e, node.id, port.id, 'out')"
-                            ></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+            <ScriptNodeComponent 
+                v-for="node in graph.nodes"
+                :key="node.id"
+                :node="node"
+                :selected="node.id === selectedNodeId"
+                @node-mousedown="handleNodeMouseDown"
+                @node-mouseup="handleNodeMouseUp"
+                @port-mousedown="handlePortMouseDown"
+                @port-mouseup="handlePortMouseUp"
+            />
             
             <div v-if="graph.nodes.length === 0" style="position: absolute; top: 100px; left: 100px; color: grey;">
                 Right-click to add nodes
@@ -499,6 +454,36 @@ onUnmounted(() => {
     overflow: visible;
 }
 
+.context-menu {
+    position: absolute;
+    background: hsl(var(--bg-panel));
+    border: 1px solid hsl(var(--border-color));
+    border-radius: 6px;
+    padding: 4px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    z-index: 1000;
+    width: 150px;
+}
+
+.menu-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 0.9rem;
+}
+
+.menu-item:hover {
+    background: hsla(var(--accent-primary), 0.2);
+}
+
+.menu-item.delete {
+    color: hsl(var(--error));
+}
+
+.menu-item.delete:hover {
+    background: hsla(var(--error), 0.2);
+}
+
 .connections-layer {
     position: absolute;
     top: 0;
@@ -508,113 +493,6 @@ onUnmounted(() => {
     pointer-events: none;
     overflow: visible;
     box-shadow: 0 0 0 2px hsla(var(--accent-secondary), 0.5), 0 8px 24px rgba(0,0,0,0.5);
-}
-
-.node-header {
-    height: 32px;
-    background: hsla(var(--accent-primary), 0.2);
-    padding: 0 12px;
-    display: flex;
-    align-items: center;
-    font-weight: bold;
-    border-bottom: 1px solid hsl(var(--glass-border));
-    border-radius: 8px 8px 0 0;
-    text-transform: uppercase;
-    font-size: 0.75rem;
-    letter-spacing: 1px;
-}
-
-.node-main-row {
-    display: flex;
-    padding: 12px 0;
-    position: relative;
-    min-height: 50px;
-}
-
-.inputs-col {
-    display: flex;
-    flex-direction: column;
-    width: 16px; /* Space for input ports */
-    align-items: flex-start; /* Left align */
-    justify-content: flex-start;
-    margin-left: -8px; /* Pull outside left border */
-}
-
-.outputs-col {
-    display: flex;
-    flex-direction: column;
-    width: auto;
-    align-items: flex-end; /* Right align */
-    justify-content: flex-start;
-    margin-right: -8px; /* Pull outside right border */
-    margin-left: auto; /* Push to right */
-}
-
-.body-col {
-    flex: 1;
-    padding: 0 8px;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-}
-
-.char-label {
-    font-size: 0.7em; 
-    color: hsl(var(--accent-secondary)); 
-    margin-bottom: 4px; 
-    font-weight: bold;
-}
-
-.node-text {
-    font-size: 0.85rem;
-    opacity: 0.9;
-    white-space: pre-wrap;
-    line-height: 1.4;
-    word-break: break-word;
-}
-
-.port-wrapper {
-    display: flex;
-    align-items: center;
-    height: 24px;
-    margin-bottom: 8px;
-}
-
-/* Input wrappers don't need label space generally */
-.port-wrapper.input {
-    justify-content: flex-start;
-}
-
-.port-wrapper.output {
-    justify-content: flex-end;
-}
-
-.port-label {
-    font-size: 0.75rem;
-    color: hsl(var(--text-main));
-    margin-right: 8px;
-    white-space: nowrap;
-    text-shadow: 0 1px 2px rgba(0,0,0,0.8);
-    pointer-events: none;
-    max-width: 100px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    text-align: right;
-}
-
-.node-port {
-    width: 16px; 
-    height: 16px;
-    background: hsl(var(--text-muted));
-    border: 1px solid black;
-    border-radius: 50%;
-    cursor: crosshair;
-    transition: background 0.2s;
-    flex-shrink: 0;
-}
-
-.node-port:hover, .node-port.active {
-    background: hsl(var(--accent-primary));
 }
 
 

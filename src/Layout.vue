@@ -1,167 +1,130 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import SceneCanvas from './components/SceneCanvas.vue';
-import AssetBrowser from './components/AssetBrowser.vue';
 import InspectorPanel from './components/InspectorPanel.vue';
 import ScriptEditor from './components/ScriptEditor.vue';
-import type { SceneData, SceneElement, ScriptGraph, ScriptNode } from './types';
-import { api } from './api';
+import ProjectExplorer from './components/ProjectExplorer.vue';
+import GameRuntime from './components/GameRuntime.vue';
+import { useProject } from './composables/useProject';
 
-// View State
+// --- Composable Usage ---
+const { 
+  currentProject, 
+  activeScene, 
+  activeScriptGraph, 
+  initProject, 
+  saveProject: saveProjectData,
+  handleOpenPage,
+  createSeason, 
+  createEpisode, 
+  createPage, 
+  deleteSeason, 
+  deleteEpisode, 
+  deletePage,
+  updateActiveSceneElement,
+  addElementToActiveScene,
+  updateScriptNode,
+  setActiveGraph
+} = useProject();
+
+// --- View State ---
 const currentView = ref<'scene' | 'script'>('scene');
+const isPlaying = ref(false);
 
-// Reactive State
-const activeScene = ref<SceneData>({
-  id: 'default',
-  name: 'Loading...',
-  elements: []
-});
+const togglePlay = () => {
+    isPlaying.value = !isPlaying.value;
+};
 
-const activeScriptGraph = ref<ScriptGraph>({
-    id: 'main_flow',
-    name: 'Main Story',
-    nodes: [
-        { id: 'node_1', type: 'Start', x: 100, y: 100, data: {} },
-        { id: 'node_2', type: 'Dialogue', x: 400, y: 150, data: { text: 'Hello World' } }
-    ],
-    connections: []
-});
+// Wrapper for save to handle UI-specific notifications if needed
+const saveProject = async () => {
+    await saveProjectData();
+    // Could add toast notification here
+};
 
-// Initialize Backend Project
-// Initialize Backend Project
-onMounted(async () => {
-    try {
-        // Mock environment check
-        if (!(window as any).__TAURI_INTERNALS__) {
-             console.warn("Tauri internals not found. Backend disabled.");
-             return;
-        }
-
-        // checks if there's already an active project, if not create one
-        let project = await api.getCurrentProject();
-        if (!project) {
-            console.log('No active project found. Creating new default project...');
-            project = await api.createProject("My Nova Project");
-        }
-        
-        // Load the active scene
-        if (project && project.activeSceneId) {
-            const scene = project.scenes[project.activeSceneId];
-            if (scene) {
-                // Ensure elements is an array (Rust serialization might need checks or direct mapping)
-                 activeScene.value = scene;
-            }
-        }
-    } catch (e) {
-        console.error("Failed to initialize project:", e);
-    }
-});
-
+// --- Selection State (UI Only) ---
 const selectedElementId = ref<string | null>(null);
-
-const activeElement = computed(() => { // Access via computed for reactivity
-    return activeScene.value.elements.find(el => el.id === selectedElementId.value) || null;
-});
-
-const handleElementSelect = (elementId: string) => {
-    selectedElementId.value = elementId;
-};
-
-const handleElementUpdate = (updatedElement: SceneElement) => {
-    const index = activeScene.value.elements.findIndex(el => el.id === updatedElement.id);
-    if (index !== -1) {
-        activeScene.value.elements[index] = updatedElement;
-        // Auto-save scene to backend state (debouncing recommended for prod, but direct for now)
-        api.saveScene(activeScene.value).catch(console.error);
-    }
-};
-
-const handleElementDrop = (payload: { x: number, y: number, data: any }) => {
-    const { x, y, data } = payload;
-    const newId = `el_${Date.now()}`;
-    
-    // Determine type based on dropped file info (mock logic for now)
-    const type = data.fileType === 'image' ? 'image' : 'text';
-    const content = data.name || 'New Element';
-    
-    const newElement: SceneElement = {
-        id: newId,
-        type,
-        x,
-        y,
-        width: type === 'image' ? 200 : 300,
-        height: type === 'image' ? 200 : 100, // Default sizing
-        content,
-        zIndex: activeScene.value.elements.length,
-        properties: {}
-    };
-    
-    activeScene.value.elements.push(newElement);
-    selectedElementId.value = newId; // Auto-select new element
-    
-    api.saveScene(activeScene.value).catch(console.error);
-};
-
-// --- Node Selection Logic ---
 const selectedNodeId = ref<string | null>(null);
+
+// Derived Selection
+const activeElement = computed(() => { 
+    return activeScene.value?.elements.find(el => el.id === selectedElementId.value) || null;
+});
 
 const activeNode = computed(() => {
     return activeScriptGraph.value.nodes.find(n => n.id === selectedNodeId.value) || null;
 });
 
+// --- Handlers ---
+
+const handleElementSelect = (elementId: string) => {
+    selectedElementId.value = elementId;
+};
+
+const handleElementDropTrigger = (payload: { x: number, y: number, data: any }) => {
+    const newId = addElementToActiveScene(payload.data, payload.x, payload.y);
+    if (newId) {
+        selectedElementId.value = newId;
+    }
+};
+
 const handleNodeSelect = (nodeId: string | null) => {
     selectedNodeId.value = nodeId;
 };
 
-const handleNodeUpdate = (updatedNode: ScriptNode) => {
-    const index = activeScriptGraph.value.nodes.findIndex(n => n.id === updatedNode.id);
-    if (index !== -1) {
-        activeScriptGraph.value.nodes[index] = updatedNode;
-        // Auto-save logic here if needed
-    }
+// Runtime handling
+const handleRuntimeChangePage = (sId: string, eId: string, pId: string) => {
+    handleOpenPage(sId, eId, pId);
 };
 
-const handleAssetDblClick = (file: any) => {
-    // Fallback: Add to center-ish of the view (fixed offset for now)
-    // Ideally we'd get viewport center, but this is a fallback.
-    handleElementDrop({ x: 400, y: 300, data: file });
+// Listen to graph updates from Editor (if any manual overrides happen)
+const handleGraphUpdate = (g: any) => {
+    setActiveGraph(g);
 };
 
-const saveProject = async () => {
-    try {
-        const msg = await api.saveProject();
-        console.log(msg);
-        alert(msg); // Temporary feedback
-    } catch (e) {
-        console.error(e);
-        alert('Failed to save project');
-    }
-};
-
-defineProps<{}>();
+onMounted(() => {
+    initProject();
+});
 </script>
 
 <template>
   <div class="editor-layout">
+    
+    <!-- Game Runtime Overlay -->
+    <GameRuntime 
+        v-if="isPlaying" 
+        :script-graph="activeScriptGraph"
+        @close="isPlaying = false"
+        @change-page="handleRuntimeChangePage"
+    />
+
     <!-- Left Sidebar: Project/Assets -->
     <aside class="sidebar-left glass-panel">
       <div class="panel-header">
-        Project Assets
+        Project Explorer
       </div>
-      <div style="height: calc(100% - 48px); overflow: hidden;">
-        <AssetBrowser @asset-dblclick="handleAssetDblClick" />
+      <div style="height: calc(100% - 48px); overflow: hidden;" v-if="currentProject">
+        <ProjectExplorer 
+            :project="currentProject"
+            @open-page="handleOpenPage"
+            @create-season="createSeason"
+            @create-episode="createEpisode"
+            @create-page="createPage"
+            @delete-season="deleteSeason"
+            @delete-episode="deleteEpisode"
+            @delete-page="deletePage"
+        />
       </div>
     </aside>
 
-    <!-- Main Workspace: Visual Editor -->
+    <!-- Main Workspace -->
     <main 
         class="workspace-area"
         @dragover.prevent
         @drop.prevent
     >
-      <!-- Mode Switcher (Tab Bar) -->
-      <div class="glass-panel" style="position: absolute; top: 16px; left: 16px; right: 16px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; z-index: 10;">
-          <div style="display: flex; gap: 16px; height: 100%;">
+      <!-- Toolbar / Mode Switcher -->
+      <div class="toolbar glass-panel">
+          <div class="tab-group">
               <button 
                 class="tab-btn" 
                 :class="{ active: currentView === 'scene' }"
@@ -178,28 +141,40 @@ defineProps<{}>();
               </button>
           </div>
           
-          <span style="font-weight: 600; opacity: 0.5;">{{ activeScene.name }}</span>
+          <span class="page-info">
+            {{ activeScene ? activeScene.name : 'No Active Page' }}
+            <span v-if="currentProject && currentProject.activeSeasonId" class="sub-info">
+                 ({{ currentProject.seasons[currentProject.activeSeasonId]?.name }} / {{ currentProject.seasons[currentProject.activeSeasonId]?.episodes[currentProject.activeEpisodeId!]?.name }})
+            </span>
+            <span v-if="isPlaying" class="status-playing">[PLAYING]</span>
+          </span>
 
-          <div style="display: flex; gap: 8px;">
-            <button class="btn" style="background: transparent; border: 1px solid hsl(var(--glass-border))" @click="saveProject">Save Project</button>
-            <button class="btn">Play</button>
+          <div class="action-group">
+            <button class="btn btn-ghost" @click="saveProject">Save Project</button>
+            <button class="btn" :class="{ 'btn-accent': isPlaying }" @click="togglePlay">{{ isPlaying ? 'Stop' : 'Play' }}</button>
           </div>
       </div>
       
-      <!-- Views -->
-      <div style="width: 100%; height: 100%; padding-top: 0px;" v-if="currentView === 'scene'">
+      <!-- Scene View -->
+      <div class="view-container" v-if="currentView === 'scene'">
           <SceneCanvas 
+            v-if="activeScene"
             :scene="activeScene" 
             @element-select="handleElementSelect"
-            @element-drop="handleElementDrop"
+            @element-drop="handleElementDropTrigger"
           />
+          <div v-else class="empty-state">
+            Select a Page to Edit
+          </div>
       </div>
       
-      <div style="width: 100%; height: 100%;" v-else-if="currentView === 'script'">
+      <!-- Script View -->
+      <div class="view-container" v-else-if="currentView === 'script'">
           <ScriptEditor 
             :graph="activeScriptGraph" 
             :selected-node-id="selectedNodeId"
             @node-select="handleNodeSelect"
+            @update:graph="handleGraphUpdate" 
           />
       </div>
 
@@ -211,15 +186,78 @@ defineProps<{}>();
         Properties
       </div>
       <InspectorPanel 
+        :project="currentProject"
         :selected-element="currentView === 'scene' ? activeElement : null"
         :selected-node="currentView === 'script' ? activeNode : null"
-        @update:element="handleElementUpdate"
-        @update:node="handleNodeUpdate"
+        @update:element="updateActiveSceneElement"
+        @update:node="updateScriptNode"
       />
     </aside>
   </div>
 </template>
 
 <style scoped>
-/* Scoped styles if needed, but relying on global main.css for now */
+.toolbar {
+    position: absolute; 
+    top: 16px; 
+    left: 16px; 
+    right: 16px; 
+    height: 48px; 
+    border-radius: 12px; 
+    display: flex; 
+    align-items: center; 
+    justify-content: space-between; 
+    padding: 0 16px; 
+    z-index: 10;
+}
+
+.tab-group {
+    display: flex; 
+    gap: 16px; 
+    height: 100%;
+}
+
+.page-info {
+    font-weight: 600; 
+    opacity: 0.5;
+}
+
+.sub-info {
+    font-size: 0.8em; 
+    opacity: 0.7;
+}
+
+.status-playing {
+    color: yellow; 
+    margin-left: 10px;
+}
+
+.action-group {
+    display: flex; 
+    gap: 8px;
+}
+
+.btn-ghost {
+    background: transparent; 
+    border: 1px solid hsl(var(--glass-border));
+}
+
+.view-container {
+    width: 100%; 
+    height: 100%; 
+    padding-top: 0px;
+}
+
+.empty-state {
+    display: flex; 
+    justify-content: center; 
+    align-items: center; 
+    height: 100%; 
+    color: grey;
+}
+
+.btn-accent {
+    background: hsl(var(--accent-primary));
+    color: white;
+}
 </style>
