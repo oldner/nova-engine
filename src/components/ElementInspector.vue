@@ -40,12 +40,12 @@ const updateProperty = (key: keyof SceneElement, value: any) => {
             }"
         >
             <option value="">-- Select Node --</option>
-            <!-- We need access to nodes. We can get them from project.scriptGraphs if activePageId is known from project? 
+            <!-- We need access to nodes. We can get them from project.scriptGraphs if activeSceneId is known from project? 
                  Or simpler: pass activeScriptGraph? 
-                 Let's iterate checking if graph exists for active page. -->
-             <template v-if="project.activePageId && project.scriptGraphs[project.activePageId]">
+                 Let's iterate checking -->
+             <template v-if="project.activeSceneId && project.scriptGraphs[project.activeSceneId]">
                 <option 
-                    v-for="node in project.scriptGraphs[project.activePageId].nodes.filter((n: any) => n.type === 'text' || n.type === 'choice')" 
+                    v-for="node in project.scriptGraphs[project.activeSceneId].nodes.filter((n: any) => n.type === 'text' || n.type === 'choice')" 
                     :key="node.id" 
                     :value="node.id"
                 >

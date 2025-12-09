@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import type { ScriptNode, Project } from '../types';
+import { computed } from 'vue'; // Added computed import
+import type { ScriptNode, Project, ScriptGraph } from '../types';
 
 const props = defineProps<{
   selectedNode: ScriptNode;
   project?: Project | null;
+  graph?: ScriptGraph | null;
 }>();
 
 const emit = defineEmits<{
@@ -45,6 +47,37 @@ const updateOption = (idx: number, text: string) => {
         updateNodeData('options', currentOptions);
     }
 };
+
+// --- Connection Context ---
+const incomingConnections = computed(() => {
+    if (!props.graph || !props.selectedNode) return [];
+    return props.graph.connections
+        .filter(c => c.toNode === props.selectedNode.id)
+        .map(c => {
+            const fromNode = props.graph?.nodes.find(n => n.id === c.fromNode);
+            return {
+                id: c.id,
+                nodeId: c.fromNode,
+                label: fromNode?.label || fromNode?.type || c.fromNode,
+                port: c.fromPort
+            };
+        });
+});
+
+const outgoingConnections = computed(() => {
+    if (!props.graph || !props.selectedNode) return [];
+    return props.graph.connections
+        .filter(c => c.fromNode === props.selectedNode.id)
+        .map(c => {
+            const toNode = props.graph?.nodes.find(n => n.id === c.toNode);
+            return {
+                id: c.id,
+                nodeId: c.toNode,
+                label: toNode?.label || toNode?.type || c.toNode,
+                port: c.toPort
+            };
+        });
+});
 </script>
 
 <template>
@@ -124,8 +157,8 @@ const updateOption = (idx: number, text: string) => {
              </div>
          </template>
 
-         <!-- Change Page Node -->
-         <template v-else-if="selectedNode.type === 'change_page'">
+         <!-- Change Scene Node -->
+         <template v-else-if="selectedNode.type === 'change_scene'">
             <div class="form-group" v-if="project">
                 <label>Target Season</label>
                 <select 
@@ -155,13 +188,13 @@ const updateOption = (idx: number, text: string) => {
 
             
             <div class="form-group" v-if="project && selectedNode.data.targetEpisodeId && selectedNode.data.targetSeasonId">
-                <label>Target Page</label>
+                <label>Target Scene</label>
                 <select 
-                    :value="selectedNode.data.targetPageId" 
-                    @change="e => updateNodeData('targetPageId', (e.target as HTMLSelectElement).value)"
+                    :value="selectedNode.data.targetSceneId" 
+                    @change="e => updateNodeData('targetSceneId', (e.target as HTMLSelectElement).value)"
                 >
-                    <option value="">Select Page</option>
-                    <option v-for="p in Object.values(project.seasons[selectedNode.data.targetSeasonId].episodes[selectedNode.data.targetEpisodeId]?.pages || {}) as any[]" :key="p.id" :value="p.id">
+                    <option value="">Select Scene</option>
+                    <option v-for="p in Object.values(project.seasons[selectedNode.data.targetSeasonId].episodes[selectedNode.data.targetEpisodeId]?.scenes || {}) as any[]" :key="p.id" :value="p.id">
                         {{ p.name }}
                     </option>
                 </select>
@@ -247,14 +280,14 @@ const updateOption = (idx: number, text: string) => {
              </div>
          </template>
 
-         <!-- Background Node -->
-         <template v-else-if="selectedNode.type === 'background'">
+         <!-- Scene Node -->
+         <template v-else-if="selectedNode.type === 'scene_node'">
              <div class="form-group">
-                 <label>Background Image Name</label>
+                 <label>Scene Image</label>
                  <input 
                      type="text" 
-                     :value="selectedNode.data.image || ''" 
-                     @input="e => updateNodeData('image', (e.target as HTMLInputElement).value)" 
+                     :value="selectedNode.data.file || ''" 
+                     @input="e => updateNodeData('file', (e.target as HTMLInputElement).value)" 
                      placeholder="e.g. classroom_day"
                  />
              </div>
@@ -271,7 +304,30 @@ const updateOption = (idx: number, text: string) => {
              </div>
          </template>
 
-    </div>
+     </div>
+
+     <!-- Connections Section -->
+     <div class="connections-section" v-if="graph">
+        <label>Connections</label>
+        
+        <div class="connection-group">
+            <span class="sub-label">Incoming</span>
+            <div v-if="incomingConnections.length === 0" class="empty-list">None</div>
+            <div v-for="conn in incomingConnections" :key="conn.id" class="connection-item">
+                <span class="conn-node">{{ conn.label }}</span>
+                <span class="conn-port">({{ conn.port }})</span>
+            </div>
+        </div>
+
+        <div class="connection-group">
+            <span class="sub-label">Outgoing</span>
+            <div v-if="outgoingConnections.length === 0" class="empty-list">None</div>
+            <div v-for="conn in outgoingConnections" :key="conn.id" class="connection-item">
+                <span class="conn-node">{{ conn.label }}</span>
+                <span class="conn-port">({{ conn.port }})</span>
+            </div>
+        </div>
+     </div>
 </template>
 
 <style scoped>
@@ -360,5 +416,46 @@ input:focus, textarea:focus, select:focus {
 
 .btn-add:hover {
     background: hsla(var(--accent-primary), 0.2);
+}
+
+.connections-section {
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid hsl(var(--glass-border));
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.connection-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.sub-label {
+    font-size: 0.7rem;
+    color: hsl(var(--text-muted));
+    text-transform: uppercase;
+}
+
+.connection-item {
+    font-size: 0.85rem;
+    padding: 4px;
+    background: hsla(var(--bg-app), 0.3);
+    border-radius: 4px;
+    display: flex;
+    justify-content: space-between;
+}
+
+.conn-port {
+    font-size: 0.75rem;
+    opacity: 0.6;
+}
+
+.empty-list {
+    font-size: 0.8rem;
+    color: hsl(var(--text-muted));
+    font-style: italic;
 }
 </style>

@@ -1,5 +1,5 @@
 import { ref, computed } from 'vue';
-import type { Project, ScriptGraph, Page, SceneElement, ScriptNode, Character } from '../types';
+import type { Project, ScriptGraph, Scene, SceneElement, ScriptNode, Character } from '../types';
 import { api } from '../api';
 
 // Singleton state could be defined outside if we want it global across components
@@ -18,29 +18,58 @@ const activeScriptGraph = ref<ScriptGraph>({
 const activeScene = computed(() => {
     if (!currentProject.value) return null;
     const p = currentProject.value;
-    if (p.activeSeasonId && p.activeEpisodeId && p.activePageId) {
-        return p.seasons[p.activeSeasonId]?.episodes[p.activeEpisodeId]?.pages[p.activePageId] || null;
+    if (p.activeSeasonId && p.activeEpisodeId && p.activeSceneId) {
+        return p.seasons[p.activeSeasonId]?.episodes[p.activeEpisodeId]?.scenes[p.activeSceneId] || null;
     }
     return null;
 });
+
+// Helper to migrate legacy data (pages -> scenes)
+const migrateProjectData = (p: any): Project => {
+    // 1. Rename pages -> scenes in episodes
+    if (p.seasons) {
+        for (const sKey in p.seasons) {
+            const season = p.seasons[sKey];
+            if (season.episodes) {
+                for (const eKey in season.episodes) {
+                    const ep = season.episodes[eKey];
+                    if (ep.pages && !ep.scenes) {
+                        ep.scenes = ep.pages; // Move pages to scenes
+                        delete ep.pages;      // Remove old key
+                    } else if (!ep.scenes) {
+                        ep.scenes = {};
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Rename activePageId -> activeSceneId
+    if (p.activePageId && !p.activeSceneId) {
+        p.activeSceneId = p.activePageId;
+        delete p.activePageId;
+    }
+
+    return p as Project;
+};
 
 export function useProject() {
 
     const initProject = async () => {
         try {
             // Try to load from backend
-            let project = await api.getCurrentProject().catch(() => null);
+            let projectData: any = await api.getCurrentProject().catch(() => null);
 
             // If backend returns null or fails, try creating one
-            if (!project) {
+            if (!projectData) {
                 console.log('No active project found. attempting creation...');
-                project = await api.createProject("My Nova Project").catch(() => null);
+                projectData = await api.createProject("My Nova Project").catch(() => null);
             }
 
             // If still null (backend offline?), use in-memory fallback
-            if (!project) {
+            if (!projectData) {
                 console.warn("Backend unavailable. Using in-memory fallback.");
-                project = {
+                projectData = {
                     name: "Offline Project",
                     width: 1920,
                     height: 1080,
@@ -49,15 +78,18 @@ export function useProject() {
                     scriptGraphs: {},
                     activeSeasonId: null,
                     activeEpisodeId: null,
-                    activePageId: null
-                } as Project;
+                    activeSceneId: null
+                };
             }
+
+            // Migrate data if necessary
+            const project = migrateProjectData(projectData);
 
             currentProject.value = project;
 
             // If there's an active page, load its script
-            if (project.activePageId) {
-                loadScriptForPage(project.activePageId);
+            if (project.activeSceneId) {
+                loadScriptForScene(project.activeSceneId);
             }
 
         } catch (e) {
@@ -73,7 +105,7 @@ export function useProject() {
                     scriptGraphs: {},
                     activeSeasonId: null,
                     activeEpisodeId: null,
-                    activePageId: null
+                    activeSceneId: null
                 } as Project;
             }
         }
@@ -81,40 +113,40 @@ export function useProject() {
 
     const saveProject = async () => {
         if (activeScene.value && currentProject.value && currentProject.value.activeSeasonId && currentProject.value.activeEpisodeId) {
-            await api.savePage(currentProject.value.activeSeasonId, currentProject.value.activeEpisodeId, activeScene.value);
+            await api.saveScene(currentProject.value.activeSeasonId, currentProject.value.activeEpisodeId, activeScene.value);
         }
         await api.saveProject();
     };
 
     // --- Navigation & Graph Loading ---
 
-    const loadScriptForPage = (pageId: string) => {
+    const loadScriptForScene = (sceneId: string) => {
         if (!currentProject.value) return;
 
         if (!currentProject.value.scriptGraphs) {
             currentProject.value.scriptGraphs = {};
         }
 
-        let graph = currentProject.value.scriptGraphs[pageId];
+        let graph = currentProject.value.scriptGraphs[sceneId];
         if (!graph) {
             // Create default graph
             graph = {
-                id: pageId,
-                name: `Script for ${pageId}`,
-                nodes: [{ id: `start_${pageId}`, type: 'start', x: 100, y: 100, data: {} }],
+                id: sceneId,
+                name: `Script for ${sceneId}`,
+                nodes: [{ id: `start_${sceneId}`, type: 'start', x: 100, y: 100, data: {} }],
                 connections: []
             };
-            currentProject.value.scriptGraphs[pageId] = graph;
+            currentProject.value.scriptGraphs[sceneId] = graph;
         }
         activeScriptGraph.value = graph;
     };
 
-    const handleOpenPage = (sId: string, eId: string, pId: string) => {
+    const handleOpenScene = (sId: string, eId: string, pId: string) => {
         if (!currentProject.value) return;
         currentProject.value.activeSeasonId = sId;
         currentProject.value.activeEpisodeId = eId;
-        currentProject.value.activePageId = pId;
-        loadScriptForPage(pId);
+        currentProject.value.activeSceneId = pId;
+        loadScriptForScene(pId);
     };
 
     // --- CRUD Operations ---
@@ -129,21 +161,21 @@ export function useProject() {
     const createEpisode = (sId: string, name: string) => {
         if (!currentProject.value) return;
         const id = `ep_${Date.now()}`;
-        currentProject.value.seasons[sId].episodes[id] = { id, name, pages: {} };
+        currentProject.value.seasons[sId].episodes[id] = { id, name, scenes: {} };
         api.saveProject();
     };
 
-    const createPage = (sId: string, eId: string, name: string) => {
+    const createScene = (sId: string, eId: string, name: string) => {
         if (!currentProject.value) return;
-        const id = `page_${Date.now()}`;
-        const newPage: Page = {
+        const id = `scene_${Date.now()}`;
+        const newScene: Scene = {
             id,
             name,
             background: null,
             elements: []
         };
-        currentProject.value.seasons[sId].episodes[eId].pages[id] = newPage;
-        handleOpenPage(sId, eId, id);
+        currentProject.value.seasons[sId].episodes[eId].scenes[id] = newScene;
+        handleOpenScene(sId, eId, id);
         api.saveProject();
     };
 
@@ -154,7 +186,7 @@ export function useProject() {
         if (currentProject.value.activeSeasonId === sId) {
             currentProject.value.activeSeasonId = null;
             currentProject.value.activeEpisodeId = null;
-            currentProject.value.activePageId = null;
+            currentProject.value.activeSceneId = null;
         }
         api.saveProject();
     };
@@ -165,17 +197,17 @@ export function useProject() {
         delete currentProject.value.seasons[sId].episodes[eId];
         if (currentProject.value.activeEpisodeId === eId) {
             currentProject.value.activeEpisodeId = null;
-            currentProject.value.activePageId = null;
+            currentProject.value.activeSceneId = null;
         }
         api.saveProject();
     };
 
-    const deletePage = async (sId: string, eId: string, pId: string) => {
+    const deleteScene = async (sId: string, eId: string, pId: string) => {
         if (!currentProject.value) return;
-        await api.deletePage(sId, eId, pId);
-        delete currentProject.value.seasons[sId].episodes[eId].pages[pId];
-        if (currentProject.value.activePageId === pId) {
-            currentProject.value.activePageId = null;
+        await api.deleteScene(sId, eId, pId);
+        delete currentProject.value.seasons[sId].episodes[eId].scenes[pId];
+        if (currentProject.value.activeSceneId === pId) {
+            currentProject.value.activeSceneId = null;
         }
         api.saveProject();
     };
@@ -218,7 +250,7 @@ export function useProject() {
             // But Layout.vue had auto-save logic for elements
             const p = currentProject.value;
             if (p.activeSeasonId && p.activeEpisodeId) {
-                api.savePage(p.activeSeasonId, p.activeEpisodeId, page).catch(console.error);
+                api.saveScene(p.activeSeasonId, p.activeEpisodeId, page).catch(console.error);
             }
         }
     };
@@ -246,7 +278,7 @@ export function useProject() {
 
         const p = currentProject.value;
         if (p.activeSeasonId && p.activeEpisodeId) {
-            api.savePage(p.activeSeasonId, p.activeEpisodeId, activeScene.value).catch(console.error);
+            api.saveScene(p.activeSeasonId, p.activeEpisodeId, activeScene.value).catch(console.error);
         }
 
         return newId;
@@ -272,7 +304,7 @@ export function useProject() {
             page.elements.splice(index, 1);
             const p = currentProject.value;
             if (p.activeSeasonId && p.activeEpisodeId) {
-                api.savePage(p.activeSeasonId, p.activeEpisodeId, page).catch(console.error);
+                api.saveScene(p.activeSeasonId, p.activeEpisodeId, page).catch(console.error);
             }
         }
     };
@@ -289,7 +321,7 @@ export function useProject() {
 
         const p = currentProject.value;
         if (p.activeSeasonId && p.activeEpisodeId) {
-            api.savePage(p.activeSeasonId, p.activeEpisodeId, page).catch(console.error);
+            api.saveScene(p.activeSeasonId, p.activeEpisodeId, page).catch(console.error);
         }
     };
 
@@ -299,13 +331,13 @@ export function useProject() {
         activeScriptGraph,
         initProject,
         saveProject,
-        handleOpenPage,
+        handleOpenScene,
         createSeason,
         createEpisode,
-        createPage,
+        createScene,
         deleteSeason,
         deleteEpisode,
-        deletePage,
+        deleteScene,
         updateActiveSceneElement,
         addElementToActiveScene,
         deleteSceneElement,

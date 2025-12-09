@@ -10,6 +10,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
     (e: 'node-select', nodeId: string | null): void;
+    (e: 'navigate-to-scene', seasonId: string, episodeId: string, sceneId: string): void;
 }>();
 
 const containerRef = ref<HTMLElement | null>(null);
@@ -51,8 +52,9 @@ const linkingState = ref<{
 const showContextMenu = ref(false);
 const contextMenuPos = ref({ x: 0, y: 0 });
 const contextMenuWorldPos = ref({ x: 0, y: 0 });
-const contextMenuTarget = ref<'canvas' | 'connection'>('canvas');
+const contextMenuTarget = ref<'canvas' | 'connection' | 'node'>('canvas');
 const targetConnectionId = ref<string | null>(null);
+const targetNodeId = ref<string | null>(null);
 
 // --- Helper Functions ---
 
@@ -82,9 +84,9 @@ const getNodePorts = (type: string, data?: any) => {
         case 'check_variable':
         case 'music':
         case 'character':
-        case 'background': return { inputs: [{ id: 'in', label: '' }], outputs: [{ id: 'flow', label: '' }] };
+        case 'scene_node': return { inputs: [{ id: 'in', label: '' }], outputs: [{ id: 'flow', label: '' }] };
         
-        case 'change_page': return { inputs: [{ id: 'in', label: '' }], outputs: [] };
+        case 'change_scene': return { inputs: [{ id: 'in', label: '' }], outputs: [] };
         default: return { inputs: [{ id: 'in', label: '' }], outputs: [{ id: 'flow', label: '' }] };
     }
 };
@@ -136,6 +138,56 @@ const handleContextMenu = (e: MouseEvent) => {
 
     const pos = getMousePos(e);
     contextMenuWorldPos.value = pos;
+};
+
+const handleNodeContextMenu = (e: MouseEvent, nodeId: string) => {
+    e.stopPropagation();
+    e.preventDefault();
+    showContextMenu.value = true;
+    contextMenuTarget.value = 'node';
+    targetNodeId.value = nodeId;
+
+    if (containerRef.value) {
+        const rect = containerRef.value.getBoundingClientRect();
+        contextMenuPos.value = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    } else {
+        contextMenuPos.value = { x: e.offsetX, y: e.offsetY };
+    }
+};
+
+const deleteNode = () => {
+    if (!targetNodeId.value) return;
+
+    // 1. Remove Node
+    const nodeIndex = props.graph.nodes.findIndex(n => n.id === targetNodeId.value);
+    if (nodeIndex === -1) return;
+    props.graph.nodes.splice(nodeIndex, 1);
+
+    // 2. Remove Connections attached to this node
+    let i = props.graph.connections.length;
+    while (i--) {
+        const c = props.graph.connections[i];
+        if (c.fromNode === targetNodeId.value || c.toNode === targetNodeId.value) {
+            props.graph.connections.splice(i, 1);
+        }
+    }
+
+    // 3. Close Menu
+    showContextMenu.value = false;
+    targetNodeId.value = null;
+    emit('node-select', null);
+};
+
+const navigateToScene = () => {
+    if (!targetNodeId.value) return;
+    const node = props.graph.nodes.find(n => n.id === targetNodeId.value);
+    if (node && node.type === 'change_scene' && node.data) {
+        const { targetSeasonId, targetEpisodeId, targetSceneId } = node.data;
+        if (targetSeasonId && targetEpisodeId && targetSceneId) {
+             emit('navigate-to-scene', targetSeasonId, targetEpisodeId, targetSceneId);
+        }
+    }
+    showContextMenu.value = false;
 };
 
 const getPath = (conn: ScriptConnection) => {
@@ -344,6 +396,10 @@ const deleteConnection = () => {
     targetConnectionId.value = null;
 };
 
+const getTargetNode = () => {
+    return props.graph.nodes.find(n => n.id === targetNodeId.value);
+};
+
 onMounted(() => {
   window.addEventListener('mouseup', handleMouseUp);
   window.addEventListener('mousemove', handleMouseMove);
@@ -376,13 +432,23 @@ onUnmounted(() => {
             <div class="menu-item" @click="addNode('choice')">🔀 Add Choice</div>
             <div class="menu-item" @click="addNode('music')">🎵 Add Music</div>
             <div class="menu-item" @click="addNode('character')">👤 Add Character</div>
-            <div class="menu-item" @click="addNode('background')">🖼️ Add Background</div>
-            <div class="menu-item" @click="addNode('change_page')">🔗 Change Page</div>
+            <div class="menu-item" @click="addNode('scene_node')">🖼️ Add Scene Visual</div>
+            <div class="menu-item" @click="addNode('change_scene')">🔗 Change Scene</div>
             <div class="menu-item" @click="addNode('set_variable')">🚩 Set Variable</div>
             <div class="menu-item" @click="addNode('check_variable')">❓ Check Variable</div>
         </template>
         <template v-else-if="contextMenuTarget === 'connection'">
             <div class="menu-item delete" @click="deleteConnection">🗑️ Delete</div>
+        </template>
+        <template v-else-if="contextMenuTarget === 'node'">
+             <div class="menu-item delete" @click="deleteNode">🗑️ Delete Node</div>
+             <div 
+                v-if="getTargetNode()?.type === 'change_scene'" 
+                class="menu-item" 
+                @click="navigateToScene"
+            >
+                🔗 Go to Scene
+             </div>
         </template>
     </div>
 
@@ -429,6 +495,7 @@ onUnmounted(() => {
                 @node-mouseup="handleNodeMouseUp"
                 @port-mousedown="handlePortMouseDown"
                 @port-mouseup="handlePortMouseUp"
+                @contextmenu.prevent.stop="(e: MouseEvent) => handleNodeContextMenu(e, node.id)"
             />
             
             <div v-if="graph.nodes.length === 0" style="position: absolute; top: 100px; left: 100px; color: grey;">

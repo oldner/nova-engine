@@ -17,13 +17,13 @@ const {
   activeScriptGraph, 
   initProject, 
   saveProject: saveProjectData,
-  handleOpenPage,
+  handleOpenScene,
   createSeason, 
   createEpisode, 
-  createPage, 
+  createScene, 
   deleteSeason, 
   deleteEpisode, 
-  deletePage,
+  deleteScene,
   updateActiveSceneElement,
   addElementToActiveScene,
   updateScriptNode,
@@ -122,8 +122,8 @@ const handleNodeSelect = (nodeId: string | null) => {
 };
 
 // Runtime handling
-const handleRuntimeChangePage = (sId: string, eId: string, pId: string) => {
-    handleOpenPage(sId, eId, pId);
+const handleRuntimeChangeScene = (sId: string, eId: string, pId: string) => {
+    handleOpenScene(sId, eId, pId);
 };
 
 // Listen to graph updates from Editor (if any manual overrides happen)
@@ -147,7 +147,7 @@ onMounted(() => {
         :script-graph="activeScriptGraph"
         :scene="activeScene"
         @close="isPlaying = false"
-        @change-page="handleRuntimeChangePage"
+        @change-scene="handleRuntimeChangeScene"
     />
 
     <!-- Character Manager Overlay -->
@@ -169,13 +169,13 @@ onMounted(() => {
       <div style="height: calc(100% - 48px); overflow: hidden;" v-if="currentProject">
         <ProjectExplorer 
             :project="currentProject"
-            @open-page="handleOpenPage"
+            @open-scene="handleOpenScene"
             @create-season="createSeason"
             @create-episode="createEpisode"
-            @create-page="createPage"
+            @create-scene="createScene"
             @delete-season="deleteSeason"
             @delete-episode="deleteEpisode"
-            @delete-page="deletePage"
+            @delete-scene="deleteScene"
         />
       </div>
     </aside>
@@ -206,7 +206,7 @@ onMounted(() => {
           </div>
           
           <span class="page-info">
-            {{ activeScene ? activeScene.name : 'No Active Page' }}
+            {{ activeScene ? activeScene.name : 'No Active Scene' }}
             <span v-if="currentProject && currentProject.activeSeasonId" class="sub-info">
                  ({{ currentProject.seasons[currentProject.activeSeasonId]?.name }} / {{ currentProject.seasons[currentProject.activeSeasonId]?.episodes[currentProject.activeEpisodeId!]?.name }})
             </span>
@@ -248,7 +248,7 @@ onMounted(() => {
           </div>
 
           <div v-else-if="!activeScene" class="empty-state">
-            Select a Page to Edit
+            Select a Scene to Edit
           </div>
       </div>
       
@@ -258,7 +258,8 @@ onMounted(() => {
             :graph="activeScriptGraph" 
             :selected-node-id="selectedNodeId"
             @node-select="handleNodeSelect"
-            @update:graph="handleGraphUpdate" 
+            @update:graph="handleGraphUpdate"
+            @navigate-to-scene="handleRuntimeChangeScene" 
           />
       </div>
 
@@ -272,6 +273,7 @@ onMounted(() => {
       <InspectorPanel 
         :project="currentProject"
         :view-mode="currentView"
+        :active-script-graph="activeScriptGraph"
         :selected-element="currentView === 'scene' ? activeElement : null"
         :selected-node="currentView === 'script' ? activeNode : null"
         @update:element="updateActiveSceneElement"

@@ -11,7 +11,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
     (e: 'close'): void;
-    (e: 'change-page', seasonId: string, episodeId: string, pageId: string): void;
+    (e: 'change-scene', seasonId: string, episodeId: string, sceneId: string): void;
 }>();
 
 const executor = ref<ScriptExecutor | null>(null);
@@ -24,9 +24,11 @@ const isFinished = ref(false);
 // Audio State
 const currentMusic = ref<string | null>(null);
 const audioPlayer = ref<HTMLAudioElement | null>(null);
+const activeBackground = ref<string | null>(null);
 
 const initGame = () => {
     executor.value = new ScriptExecutor(props.scriptGraph);
+    activeBackground.value = null; // Reset background on init
     const start = executor.value.getStartNode();
     if (start) {
         processNode(start);
@@ -57,12 +59,12 @@ const processNode = (node: ScriptNode) => {
             choices.value = executor.value?.getChoices(node) || [];
             break;
             
-        case 'change_page':
-            const { targetSeasonId, targetEpisodeId, targetPageId } = node.data;
-            if (targetSeasonId && targetEpisodeId && targetPageId) {
-                emit('change-page', targetSeasonId, targetEpisodeId, targetPageId);
+        case 'change_scene':
+            const { targetSeasonId, targetEpisodeId, targetSceneId } = node.data;
+            if (targetSeasonId && targetEpisodeId && targetSceneId) {
+                emit('change-scene', targetSeasonId, targetEpisodeId, targetSceneId);
             } else {
-                dialogueText.value = "Error: Invalid Page Link";
+                dialogueText.value = "Error: Invalid Scene Link";
                 isFinished.value = true;
             }
             break;
@@ -72,8 +74,17 @@ const processNode = (node: ScriptNode) => {
             advance(); // Auto-advance
             break;
 
+        case 'scene_node':
+            // Update visual background
+            if (node.data.file) {
+                // In a real app, resolve asset path. Here we assume it's a file name in /assets/backgrounds/ or similar
+                // For prototype, we might just use the string if it's a URL, or a placeholder logic
+                activeBackground.value = node.data.file; 
+            }
+            advance();
+            break;
+
         case 'character':
-        case 'background':
         case 'set_variable':
         case 'check_variable':
             // Placeholder: Just advance for now to prevent getting stuck
@@ -159,6 +170,16 @@ watch(() => props.scriptGraph, initGame);
 
     <!-- Center Stage (Visuals) -->
     <div class="stage" v-if="scene">
+        <!-- Dynamic Background Layer -->
+        <div v-if="activeBackground" class="stage-background">
+             <!-- If it's a full URL or relative path, use it. Else assumes assets folder -->
+             <img :src="activeBackground.startsWith('http') ? activeBackground : `/assets/backgrounds/${activeBackground}.png`" 
+                  alt="background" 
+                  class="bg-image"
+                  @error="(e) => (e.target as HTMLImageElement).style.display = 'none'" 
+             /> 
+        </div>
+
         <!-- Render Scene Elements -->
         <div 
             v-for="el in scene.elements" 
@@ -226,6 +247,21 @@ watch(() => props.scriptGraph, initGame);
     background: linear-gradient(to bottom, #2c3e50, #000); /* Fallback BG */
     position: relative;
     overflow: hidden;
+}
+
+.stage-background {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+}
+
+.bg-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
 }
 
 .stage-placeholder {

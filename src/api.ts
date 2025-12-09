@@ -10,16 +10,16 @@ export const api = {
         return await invoke("get_current_project");
     },
 
-    savePage: async (seasonId: string, episodeId: string, page: SceneData): Promise<void> => {
-        return await invoke("save_page", { seasonId, episodeId, page });
+    saveScene: async (seasonId: string, episodeId: string, scene: SceneData): Promise<void> => {
+        return await invoke("save_page", { seasonId, episodeId, page: scene }); // TODO: Update backend command name
     },
 
     saveProject: async (): Promise<string> => {
         return await invoke("save_project");
     },
 
-    deletePage: async (seasonId: string, episodeId: string, pageId: string): Promise<void> => {
-        return await invoke("delete_page", { seasonId, episodeId, pageId });
+    deleteScene: async (seasonId: string, episodeId: string, sceneId: string): Promise<void> => {
+        return await invoke("delete_page", { seasonId, episodeId, pageId: sceneId }); // TODO: Update backend command name
     },
 
     deleteEpisode: async (seasonId: string, episodeId: string): Promise<void> => {

@@ -32,9 +32,9 @@ const ports = computed(() => {
         case 'set_variable': 
         case 'music':
         case 'character':
-        case 'background': return { inputs: [{ id: 'in', label: '' }], outputs: [{ id: 'flow', label: '' }] };
+        case 'scene_node': return { inputs: [{ id: 'in', label: '' }], outputs: [{ id: 'flow', label: '' }] };
         
-        case 'change_page': return { inputs: [{ id: 'in', label: '' }], outputs: [] };
+        case 'change_scene': return { inputs: [{ id: 'in', label: '' }], outputs: [] };
         default: return { inputs: [{ id: 'in', label: '' }], outputs: [{ id: 'flow', label: '' }] };
     }
 });
@@ -85,6 +85,9 @@ const ports = computed(() => {
                 <div v-else-if="node.type === 'character'" class="node-special">
                     👤 {{ node.data.characterName || 'No Character' }}
                     <span class="sub-detail">{{ node.data.action || 'Show' }}</span>
+                </div>
+                <div v-else-if="node.type === 'scene_node'" class="node-special">
+                    🖼️ {{ node.data.file || 'No Image' }}
                 </div>
                 <!-- Default/Fallback -->
                 <div v-else class="node-text">{{ node.data.text || node.type }}</div>

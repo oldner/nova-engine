@@ -1,19 +1,19 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import type { Project, Season, Episode, Page } from '../types';
+import type { Project, Season, Episode, Scene } from '../types';
 
 const props = defineProps<{
     project: Project;
 }>();
 
 const emit = defineEmits<{
-    (e: 'open-page', seasonId: string, episodeId: string, pageId: string): void;
+    (e: 'open-scene', seasonId: string, episodeId: string, sceneId: string): void;
     (e: 'create-season', name: string): void;
     (e: 'create-episode', seasonId: string, name: string): void;
-    (e: 'create-page', seasonId: string, episodeId: string, name: string): void;
+    (e: 'create-scene', seasonId: string, episodeId: string, name: string): void;
     (e: 'delete-season', seasonId: string): void;
     (e: 'delete-episode', seasonId: string, episodeId: string): void;
-    (e: 'delete-page', seasonId: string, episodeId: string, pageId: string): void;
+    (e: 'delete-scene', seasonId: string, episodeId: string, sceneId: string): void;
 }>();
 
 // ... existing refs ...
@@ -30,14 +30,14 @@ const handleDeleteEpisode = (sId: string, eId: string) => {
     if (confirm("Delete this Episode and all its pages?")) emit('delete-episode', sId, eId);
 };
 
-const handleDeletePage = (sId: string, eId: string, pId: string) => {
-    if (confirm("Delete this Page?")) emit('delete-page', sId, eId, pId);
+const handleDeleteScene = (sId: string, eId: string, pId: string) => {
+    if (confirm("Delete this Scene?")) emit('delete-scene', sId, eId, pId);
 };
 
 const searchQuery = ref('');
 const expandedSeasons = ref<Record<string, boolean>>({});
 const expandedEpisodes = ref<Record<string, boolean>>({});
-const visiblePagesLimit = ref<Record<string, number>>({}); // Limit per episode
+const visibleScenesLimit = ref<Record<string, number>>({}); // Limit per episode
 const PAGE_SIZE = 50;
 
 const toggleSeason = (id: string) => {
@@ -47,13 +47,13 @@ const toggleSeason = (id: string) => {
 const toggleEpisode = (id: string) => {
     expandedEpisodes.value[id] = !expandedEpisodes.value[id];
     // Initialize limit if not set
-    if (!visiblePagesLimit.value[id]) {
-        visiblePagesLimit.value[id] = PAGE_SIZE;
+    if (!visibleScenesLimit.value[id]) {
+        visibleScenesLimit.value[id] = PAGE_SIZE;
     }
 };
 
-const showMorePages = (episodeId: string) => {
-    visiblePagesLimit.value[episodeId] = (visiblePagesLimit.value[episodeId] || PAGE_SIZE) + PAGE_SIZE;
+const showMoreScenes = (episodeId: string) => {
+    visibleScenesLimit.value[episodeId] = (visibleScenesLimit.value[episodeId] || PAGE_SIZE) + PAGE_SIZE;
 };
 
 // --- Computed Filters ---
@@ -71,22 +71,22 @@ const filteredSeasons = computed(() => {
         if (!season.episodes) continue;
         
         for (const [eId, episode] of Object.entries(season.episodes)) {
-             // Filter Pages
-             const filteredPages: Record<string, Page> = {};
-             let hasPageMatch = false;
+             // Filter Scenes
+             const filteredScenes: Record<string, Scene> = {};
+             let hasSceneMatch = false;
              
-             if (episode.pages) {
-             for (const [pId, page] of Object.entries(episode.pages)) {
-                 if (page.name.toLowerCase().includes(query)) {
-                     filteredPages[pId] = page;
-                     hasPageMatch = true;
+             if (episode.scenes) {
+             for (const [pId, scene] of Object.entries(episode.scenes)) {
+                 if (scene.name.toLowerCase().includes(query)) {
+                     filteredScenes[pId] = scene;
+                     hasSceneMatch = true;
                  }
              }
              }
 
-             // Include episode if Name matches OR it has matching pages
-             if (episode.name.toLowerCase().includes(query) || hasPageMatch) {
-                 filteredEpisodes[eId] = { ...episode, pages: hasPageMatch ? filteredPages : episode.pages };
+             // Include episode if Name matches OR it has matching scenes
+             if (episode.name.toLowerCase().includes(query) || hasSceneMatch) {
+                 filteredEpisodes[eId] = { ...episode, scenes: hasSceneMatch ? filteredScenes : episode.scenes };
              }
         }
         
@@ -102,16 +102,16 @@ const filteredSeasons = computed(() => {
     return result;
 });
 
-// Helper to get paginated pages list
-const getVisiblePages = (episodeId: string, pages: Record<string, Page>) => {
-    if (!pages) return [];
-    const allPages = Object.values(pages);
+// Helper to get paginated scenes list
+const getVisibleScenes = (episodeId: string, scenes: Record<string, Scene>) => {
+    if (!scenes) return [];
+    const allScenes = Object.values(scenes);
     // If searching, show ALL (filtering already reduced the set)
-    if (searchQuery.value) return allPages;
+    if (searchQuery.value) return allScenes;
     
     // Otherwise paginate
-    const limit = visiblePagesLimit.value[episodeId] || PAGE_SIZE;
-    return allPages.slice(0, limit);
+    const limit = visibleScenesLimit.value[episodeId] || PAGE_SIZE;
+    return allScenes.slice(0, limit);
 };
 
 // ... Creation Handlers ...
@@ -126,9 +126,9 @@ const handleCreateEpisode = (seasonId: string) => {
     if (name) emit('create-episode', seasonId, name);
 };
 
-const handleCreatePage = (seasonId: string, episodeId: string) => {
-    const name = prompt("Page Name:", "New Page");
-    if (name) emit('create-page', seasonId, episodeId, name);
+const handleCreateScene = (seasonId: string, episodeId: string) => {
+    const name = prompt("Scene Name:", "New Scene");
+    if (name) emit('create-scene', seasonId, episodeId, name);
 };
 
 </script>
@@ -163,32 +163,32 @@ const handleCreatePage = (seasonId: string, episodeId: string) => {
                     <!-- Episode Header -->
                     <div class="tree-item episode" @click="toggleEpisode(String(eId))">
                         <span class="icon">{{ expandedEpisodes[eId] ? '📖' : '📘' }}</span>
-                        <span class="label">{{ episode.name }} ({{ Object.keys(episode.pages).length }})</span>
+                        <span class="label">{{ episode.name }} ({{ Object.keys(episode.scenes || {}).length }})</span>
                         <div class="actions">
                             <button class="btn-icon danger" @click.stop="handleDeleteEpisode(String(sId), String(eId))" title="Delete Episode">🗑️</button>
-                            <button class="btn-icon" @click.stop="handleCreatePage(String(sId), String(eId))" title="Add Page">📄+</button>
+                            <button class="btn-icon" @click.stop="handleCreateScene(String(sId), String(eId))" title="Add Scene">📄+</button>
                         </div>
                     </div>
 
-                    <!-- Pages List -->
+                     <!-- Scenes List -->
                      <div v-if="expandedEpisodes[eId]" class="tree-children">
                         <div 
-                            v-for="(page) in getVisiblePages(String(eId), episode.pages)" 
-                            :key="page.id" 
+                            v-for="(scene) in getVisibleScenes(String(eId), episode.scenes)" 
+                            :key="scene.id" 
                             class="tree-item page"
-                            :class="{ active: project.activePageId === page.id }"
-                            @dblclick="emit('open-page', String(sId), String(eId), String(page.id))"
+                            :class="{ active: project.activeSceneId === scene.id }"
+                            @dblclick="emit('open-scene', String(sId), String(eId), String(scene.id))"
                         >
-                            <span class="icon">📄</span>
-                            <span class="label">{{ page.name }}</span>
-                            <button class="btn-icon danger page-delete" @click.stop="handleDeletePage(String(sId), String(eId), String(page.id))" title="Delete Page">🗑️</button>
+                            <span class="icon">🎬</span>
+                            <span class="label">{{ scene.name }}</span>
+                            <button class="btn-icon danger page-delete" @click.stop="handleDeleteScene(String(sId), String(eId), String(scene.id))" title="Delete Scene">🗑️</button>
                         </div>
                         
                         <!-- Load More Button -->
                         <div 
-                            v-if="!searchQuery && Object.keys(episode.pages).length > (visiblePagesLimit[eId] || PAGE_SIZE)"
+                            v-if="!searchQuery && Object.keys(episode.scenes || {}).length > (visibleScenesLimit[eId] || PAGE_SIZE)"
                             class="load-more"
-                            @click="showMorePages(String(eId))"
+                            @click="showMoreScenes(String(eId))"
                         >
                             Show More...
                         </div>

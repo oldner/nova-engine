@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { SceneElement, ScriptNode, Project } from '../types';
+import type { SceneElement, ScriptNode, Project, ScriptGraph } from '../types';
 import ElementInspector from './ElementInspector.vue';
 import NodeInspector from './NodeInspector.vue';
 import LayersPanel from './LayersPanel.vue';
@@ -8,6 +8,7 @@ defineProps<{
   selectedElement?: SceneElement | null;
   selectedNode?: ScriptNode | null;
   project?: Project | null;
+  activeScriptGraph?: ScriptGraph | null;
   viewMode?: 'scene' | 'script';
 }>();
 
@@ -32,7 +33,7 @@ const handleNodeUpdate = (node: ScriptNode) => {
 <template>
   <div class="inspector-panel">
     <div v-if="viewMode === 'scene'">
-         <div class="add-layers-controls" v-if="project && project.activePageId">
+         <div class="add-layers-controls" v-if="project && project.activeSceneId">
              <button class="btn-add-layer" @click="$emit('add-element', 'dialogue')">
                  + Dialogue Box
              </button>
@@ -41,8 +42,8 @@ const handleNodeUpdate = (node: ScriptNode) => {
          </div>
 
          <LayersPanel
-            v-if="project && project.activeSeasonId && project.activeEpisodeId && project.activePageId"
-            :elements="project.seasons[project.activeSeasonId].episodes[project.activeEpisodeId].pages[project.activePageId].elements"
+            v-if="project && project.activeSeasonId && project.activeEpisodeId && project.activeSceneId"
+            :elements="project.seasons[project.activeSeasonId].episodes[project.activeEpisodeId].scenes[project.activeSceneId].elements"
             :selected-element-id="selectedElement?.id"
             @select="(id) => $emit('select-element', id)"
             @update:elements="(els) => $emit('reorder-elements', els)"
@@ -57,7 +58,7 @@ const handleNodeUpdate = (node: ScriptNode) => {
             @update:element="handleElementUpdate"
         />
         
-        <div v-if="!selectedElement && (!project || !project.activePageId)" class="empty-state">
+        <div v-if="!selectedElement && (!project || !project.activeSceneId)" class="empty-state">
             <p>No Scene Active</p>
         </div>
     </div>
@@ -67,6 +68,7 @@ const handleNodeUpdate = (node: ScriptNode) => {
             v-if="selectedNode"
             :selected-node="selectedNode"
             :project="project"
+            :graph="activeScriptGraph"
             @update:node="handleNodeUpdate"
         />
         <div v-else class="empty-state">

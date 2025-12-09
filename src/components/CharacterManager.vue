@@ -2,7 +2,7 @@
 import { ref } from 'vue';
 import type { Character } from '../types';
 
-const props = defineProps<{
+defineProps<{
     characters?: Record<string, Character>;
 }>();
 
@@ -15,7 +15,7 @@ const emit = defineEmits<{
 
 const newName = ref('');
 const newColor = ref('#ffffff');
-const editingId = ref<string | null>(null);
+
 
 const handleCreate = () => {
     if (newName.value.trim()) {
@@ -25,10 +25,7 @@ const handleCreate = () => {
     }
 };
 
-const startEdit = (char: Character) => {
-    editingId.value = char.id;
-    // We could copy values to a temp state for editing if we want inline editing
-};
+// function startEdit(char: Character) {} // Unused placeholder removed
 
 const handleDelete = (id: string) => {
     if (confirm('Delete character?')) {

@@ -18,20 +18,19 @@ export interface SceneElement {
     visible?: boolean;
 }
 
-export interface Page {
+export interface Scene {
     id: string;
     name: string;
     background: string | null;
     elements: SceneElement[];
 }
 
-export type SceneData = Page;
-export type Scene = Page;
+export type SceneData = Scene;
 
 export interface Episode {
     id: string;
     name: string;
-    pages: Record<string, Page>; // Rust HashMap -> JS Object
+    scenes: Record<string, Scene>; // Rust HashMap -> JS Object
 }
 
 export interface Season {
@@ -56,10 +55,10 @@ export interface Project {
     // Editor State (Runtime)
     activeSeasonId: string | null;
     activeEpisodeId: string | null;
-    activePageId: string | null;
+    activeSceneId: string | null; // Was activePageId
 }
 
-export type NodeType = 'start' | 'end' | 'text' | 'choice' | 'set_variable' | 'check_variable' | 'change_page' | 'music' | 'character' | 'background';
+export type NodeType = 'start' | 'end' | 'text' | 'choice' | 'set_variable' | 'check_variable' | 'change_scene' | 'music' | 'character' | 'scene_node';
 
 export interface ScriptNode {
     id: string;
