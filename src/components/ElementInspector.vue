@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import type { SceneElement } from '../types';
+import type { SceneElement, Project } from '../types';
 
 const props = defineProps<{
   selectedElement: SceneElement;
+  project?: Project | null;
 }>();
 
 const emit = defineEmits<{
@@ -20,6 +21,38 @@ const updateProperty = (key: keyof SceneElement, value: any) => {
       <div class="form-group">
         <label>ID</label>
         <input type="text" :value="selectedElement.id" disabled class="input-disabled" />
+      </div>
+
+      <div class="form-group" v-if="selectedElement.type === 'dialogue' && project">
+         <label>Preview Source Node</label>
+         <select 
+            :value="selectedElement.properties.previewNodeId || ''" 
+            @change="e => {
+                const val = (e.target as HTMLSelectElement).value;
+                // We store this in properties to persist checking (optional, or just use as session state)
+                // Actually user wants to select a node to PREVIEW it.
+                // Does this change the content of the element persistently?
+                // Or acts as a selector?
+                // Let's assume it sets a property 'previewNodeId' which Layout then uses?
+                // BUT Layout handles preview state.
+                // We should EMIT an event 'preview-node' or just update the property.
+                updateProperty('properties', { ...selectedElement.properties, previewNodeId: val });
+            }"
+        >
+            <option value="">-- Select Node --</option>
+            <!-- We need access to nodes. We can get them from project.scriptGraphs if activePageId is known from project? 
+                 Or simpler: pass activeScriptGraph? 
+                 Let's iterate checking if graph exists for active page. -->
+             <template v-if="project.activePageId && project.scriptGraphs[project.activePageId]">
+                <option 
+                    v-for="node in project.scriptGraphs[project.activePageId].nodes.filter((n: any) => n.type === 'text' || n.type === 'choice')" 
+                    :key="node.id" 
+                    :value="node.id"
+                >
+                    {{ node.label || (node.data.text ? node.data.text.substr(0, 20) + '...' : node.id) }}
+                </option>
+             </template>
+         </select>
       </div>
 
       <div class="form-group">

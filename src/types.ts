@@ -6,7 +6,7 @@ export interface ViewportState {
 
 export interface SceneElement {
     id: string;
-    type: 'text' | 'image' | 'choice';
+    type: 'text' | 'image' | 'choice' | 'dialogue'; // Added dialogue type
     x: number;
     y: number;
     width: number;
@@ -15,6 +15,7 @@ export interface SceneElement {
     zIndex: number;
     properties: Record<string, string>;
     selected?: boolean;
+    visible?: boolean;
 }
 
 export interface Page {
@@ -24,7 +25,8 @@ export interface Page {
     elements: SceneElement[];
 }
 
-export type SceneData = Page; // Keep alias for now to minimize refactoring
+export type SceneData = Page;
+export type Scene = Page;
 
 export interface Episode {
     id: string;
@@ -38,20 +40,30 @@ export interface Season {
     episodes: Record<string, Episode>;
 }
 
+export interface Character {
+    id: string;
+    name: string;
+    color: string;
+    defaultSprite?: string;
+}
+
 export interface Project {
     name: string;
     seasons: Record<string, Season>;
+    characters: Record<string, Character>;
     scriptGraphs: Record<string, ScriptGraph>;
 
+    // Editor State (Runtime)
     activeSeasonId: string | null;
     activeEpisodeId: string | null;
     activePageId: string | null;
 }
 
-export type NodeType = 'start' | 'text' | 'choice' | 'jump' | 'set_flag' | 'change_page';
+export type NodeType = 'start' | 'end' | 'text' | 'choice' | 'set_variable' | 'check_variable' | 'change_page' | 'music' | 'character' | 'background';
 
 export interface ScriptNode {
     id: string;
+    label?: string;
     type: NodeType;
     x: number;
     y: number;

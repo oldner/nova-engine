@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue';
-import type { ScriptGraph, ScriptNode } from '../types';
+import type { ScriptGraph, ScriptNode, Scene } from '../types';
 import { ScriptExecutor } from '../utils/ScriptExecutor';
+import DialogueOverlay from './DialogueOverlay.vue';
 
 const props = defineProps<{
     scriptGraph: ScriptGraph;
+    scene?: Scene | null;
 }>();
 
 const emit = defineEmits<{
@@ -19,6 +21,10 @@ const characterName = ref('');
 const choices = ref<{ id: string, label: string }[]>([]);
 const isFinished = ref(false);
 
+// Audio State
+const currentMusic = ref<string | null>(null);
+const audioPlayer = ref<HTMLAudioElement | null>(null);
+
 const initGame = () => {
     executor.value = new ScriptExecutor(props.scriptGraph);
     const start = executor.value.getStartNode();
@@ -32,45 +38,93 @@ const initGame = () => {
 
 const processNode = (node: ScriptNode) => {
     currentNode.value = node;
+    choices.value = []; // Reset choices
+
+    console.log("Processing Node:", node.type, node.id);
+
+    switch (node.type) {
+        case 'start':
+            advance();
+            break;
+            
+        case 'text':
+            dialogueText.value = node.data.text || '';
+            characterName.value = node.data.characterId || node.data.character || ''; 
+            break;
+            
+        case 'choice':
+            dialogueText.value = node.data.text || '';
+            choices.value = executor.value?.getChoices(node) || [];
+            break;
+            
+        case 'change_page':
+            const { targetSeasonId, targetEpisodeId, targetPageId } = node.data;
+            if (targetSeasonId && targetEpisodeId && targetPageId) {
+                emit('change-page', targetSeasonId, targetEpisodeId, targetPageId);
+            } else {
+                dialogueText.value = "Error: Invalid Page Link";
+                isFinished.value = true;
+            }
+            break;
+
+        case 'music':
+            handleMusicNode(node);
+            advance(); // Auto-advance
+            break;
+
+        case 'character':
+        case 'background':
+        case 'set_variable':
+        case 'check_variable':
+            // Placeholder: Just advance for now to prevent getting stuck
+            console.log(`Executing ${node.type} node (Not fully implemented)`);
+            advance();
+            break;
+            
+        default:
+            console.warn("Unknown node type:", node.type);
+            advance();
+            break;
+    }
+};
+
+const handleMusicNode = (node: ScriptNode) => {
+    const action = node.data.action || 'play';
+    const volume = (node.data.volume ?? 100) / 100;
     
-    // Reset state
-    choices.value = [];
-    
-    if (node.type === 'start') {
-        // Auto-advance from start
-        advance();
-    } else if (node.type === 'text') {
-        dialogueText.value = node.data.text || '';
-        characterName.value = node.data.characterId || ''; // TODO: Resolve character name
-    } else if (node.type === 'choice') {
-        dialogueText.value = node.data.text || '';
-        choices.value = executor.value?.getChoices(node) || [];
-    } else if (node.type === 'change_page') {
-        const { targetSeasonId, targetEpisodeId, targetPageId } = node.data;
-        if (targetSeasonId && targetEpisodeId && targetPageId) {
-            emit('change-page', targetSeasonId, targetEpisodeId, targetPageId);
-        } else {
-            dialogueText.value = "Error: Invalid Page Link";
-            isFinished.value = true;
+    if (audioPlayer.value) {
+        audioPlayer.value.volume = volume;
+    }
+
+    if (action === 'stop') {
+        if (audioPlayer.value) {
+             audioPlayer.value.pause();
+             audioPlayer.value.currentTime = 0;
+        }
+        currentMusic.value = null;
+    } else {
+        // Play or Play Once
+        const trackName = node.data.musicName;
+        if (trackName && trackName !== currentMusic.value) {
+            currentMusic.value = trackName;
+            // TODO: Real asset URL resolution. using placeholder for now.
+            // Assuming assets are in /bgm/ folder in public or similar
+             if (audioPlayer.value) {
+                audioPlayer.value.src = `/assets/bgm/${trackName}.mp3`; 
+                audioPlayer.value.loop = (action === 'play');
+                audioPlayer.value.play().catch(e => console.error("Audio playback failed:", e));
+             }
         }
     }
 };
 
 const advance = (choiceId?: string) => {
     if (!currentNode.value || !executor.value) return;
-
-    // Use specific port for choice, or 'flow'/'output' for generic
-// Use specific port for choice, or 'flow'/'output' for generic 
-    
-    // For text nodes, often the port is just 'flow' or 'output'. 
-    // In our editor we used 'flow' for start/text/choice.
-    // Let's check typical connection logic:
     
     let next: ScriptNode | null = null;
     
     if (currentNode.value.type === 'choice' && choiceId) {
         // Find connection from specific choice port
-        // Port ID convention from ScriptEditor: `out-${option.id}`
         next = executor.value.getNextNode(currentNode.value.id, `out-${choiceId}`);
     } else {
         // Default flow
@@ -100,38 +154,54 @@ watch(() => props.scriptGraph, initGame);
         <button class="btn-close" @click="$emit('close')">❌ Stop</button>
     </div>
 
-    <!-- Center Stage (Visuals placeholder) -->
-    <div class="stage">
-        <!-- Backgrounds/Characters would go here -->
+    <!-- Hidden Audio Player -->
+    <audio ref="audioPlayer" style="display: none;"></audio>
+
+    <!-- Center Stage (Visuals) -->
+    <div class="stage" v-if="scene">
+        <!-- Render Scene Elements -->
+        <div 
+            v-for="el in scene.elements" 
+            :key="el.id"
+            class="scene-element"
+            :style="{
+                left: el.x + 'px',
+                top: el.y + 'px',
+                width: el.width + 'px',
+                height: el.height + 'px',
+                zIndex: el.zIndex
+            }"
+        >
+            <template v-if="el.type === 'image'">
+                <img :src="el.content" alt="scene element" style="width: 100%; height: 100%; object-fit: cover;" />
+            </template>
+            <template v-else-if="el.type === 'text'">
+                <div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 2em; color: white; text-shadow: 0 2px 4px black;">
+                    {{ el.content }}
+                </div>
+            </template>
+            <template v-else>
+                 <!-- Default Box -->
+                 <div style="width: 100%; height: 100%; background: rgba(255,255,255,0.2); border: 2px dashed rgba(255,255,255,0.5); display: flex; align-items: center; justify-content: center;">
+                    {{ el.content }}
+                 </div>
+            </template>
+        </div>
+    </div>
+    <div class="stage-placeholder" v-else>
+        No Scene Data
     </div>
 
-    <!-- Gameplay UI -->
+    <!-- Gameplay UI (Use Reusable Overlay) -->
     <div class="runtime-ui-layer bottom">
-        
-        <!-- Choices Overlay -->
-        <div v-if="choices.length > 0" class="choices-container">
-            <button 
-                v-for="choice in choices" 
-                :key="choice.id" 
-                class="choice-btn"
-                @click="advance(choice.id)"
-            >
-                {{ choice.label }}
-            </button>
-        </div>
-
-        <!-- Dialogue Box -->
-        <div 
-            v-else 
-            class="dialogue-box" 
-            :class="{ finished: isFinished }"
-            @click="!isFinished && advance()"
-        >
-            <div v-if="characterName" class="char-name">{{ characterName }}</div>
-            <div class="text-content">{{ dialogueText }}</div>
-            <div v-if="!isFinished" class="click-indicator">▼</div>
-        </div>
-
+        <DialogueOverlay 
+            :text="dialogueText"
+            :character-name="characterName"
+            :choices="choices"
+            :is-finished="isFinished"
+            @advance="advance()"
+            @choice="advance"
+        />
     </div>
 </div>
 </template>
@@ -153,16 +223,31 @@ watch(() => props.scriptGraph, initGame);
 
 .stage {
     flex: 1;
-    background: linear-gradient(to bottom, #2c3e50, #000); /* Placeholder BG */
+    background: linear-gradient(to bottom, #2c3e50, #000); /* Fallback BG */
+    position: relative;
+    overflow: hidden;
+}
+
+.stage-placeholder {
+    flex: 1;
     display: flex;
     align-items: center;
     justify-content: center;
+    color: #555;
+    font-size: 2rem;
+}
+
+.scene-element {
+    position: absolute;
+    user-select: none;
+    pointer-events: none; /* Let clicks pass through to stage? Typically yes for VN background elements */
 }
 
 .runtime-ui-layer {
     position: absolute;
     pointer-events: none; /* Let clicks pass through to layer below if needed */
     width: 100%;
+    z-index: 100; /* UI on top of scene */
 }
 .runtime-ui-layer.top-right {
     top: 20px;
@@ -190,72 +275,5 @@ watch(() => props.scriptGraph, initGame);
 }
 .btn-close:hover {
     background: red;
-}
-
-.dialogue-box {
-    width: 80%;
-    max-width: 800px;
-    min-height: 150px;
-    background: rgba(0, 0, 0, 0.85);
-    border: 2px solid #555;
-    border-radius: 8px;
-    padding: 20px;
-    position: relative;
-    cursor: pointer;
-    user-select: none;
-}
-
-.dialogue-box:hover {
-    border-color: #777;
-}
-
-.char-name {
-    font-size: 1.2rem;
-    font-weight: bold;
-    color: #ffd700;
-    margin-bottom: 8px;
-}
-
-.text-content {
-    font-size: 1.1rem;
-    line-height: 1.5;
-}
-
-.click-indicator {
-    position: absolute;
-    bottom: 10px;
-    right: 20px;
-    animation: bounce 1s infinite;
-}
-
-@keyframes bounce {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(4px); }
-}
-
-.choices-container {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    margin-bottom: 20px;
-    width: 60%;
-    max-width: 600px;
-}
-
-.choice-btn {
-    background: rgba(0, 0, 0, 0.9);
-    border: 1px solid #777;
-    color: white;
-    padding: 15px;
-    font-size: 1.1rem;
-    cursor: pointer;
-    transition: all 0.2s;
-    border-radius: 4px;
-}
-
-.choice-btn:hover {
-    background: #333;
-    border-color: white;
-    transform: scale(1.02);
 }
 </style>

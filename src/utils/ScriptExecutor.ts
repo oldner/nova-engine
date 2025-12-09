@@ -31,6 +31,6 @@ export class ScriptExecutor {
 
     public getChoices(node: ScriptNode): { id: string, label: string }[] {
         if (node.type !== 'choice') return [];
-        return node.data.choices || [];
+        return node.data.options?.map((opt: any) => ({ id: opt.id, label: opt.text })) || [];
     }
 }

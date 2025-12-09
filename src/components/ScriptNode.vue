@@ -20,8 +20,7 @@ const ports = computed(() => {
     const data = props.node.data;
     switch (t) {
         case 'start': return { inputs: [], outputs: [{ id: 'flow', label: '' }] };
-        case 'text': 
-        case 'dialogue': return { inputs: [{ id: 'in', label: '' }], outputs: [{ id: 'flow', label: '' }] };
+        case 'text': return { inputs: [{ id: 'in', label: '' }], outputs: [{ id: 'flow', label: '' }] };
         case 'choice': {
             const options = data?.options || [];
             if (options.length === 0) return { inputs: [{ id: 'in', label: '' }], outputs: [] };
@@ -30,7 +29,11 @@ const ports = computed(() => {
                 outputs: options.map((opt: any) => ({ id: `out-${opt.id}`, label: opt.text })) 
             };
         }
-        case 'set_flag': return { inputs: [{ id: 'in', label: '' }], outputs: [{ id: 'flow', label: '' }] };
+        case 'set_variable': 
+        case 'music':
+        case 'character':
+        case 'background': return { inputs: [{ id: 'in', label: '' }], outputs: [{ id: 'flow', label: '' }] };
+        
         case 'change_page': return { inputs: [{ id: 'in', label: '' }], outputs: [] };
         default: return { inputs: [{ id: 'in', label: '' }], outputs: [{ id: 'flow', label: '' }] };
     }
@@ -46,7 +49,9 @@ const ports = computed(() => {
         @mouseup="(e) => emit('node-mouseup', e, node.id)"
         @click.stop
     >
-        <div class="node-header">{{ node.type }}</div>
+        <div class="node-header" :title="node.type">
+            {{ node.label || node.type }}
+        </div>
         
         <div class="node-main-row">
             <!-- Inputs Column -->
@@ -67,8 +72,22 @@ const ports = computed(() => {
 
             <!-- Body Column -->
             <div class="body-col">
-                <div v-if="node.data.character" class="char-label">{{ node.data.character }}</div>
-                <div class="node-text">{{ node.data.text || '...' }}</div>
+                <div v-if="node.type === 'text'">
+                    <div v-if="node.data.character" class="char-label">{{ node.data.character }}</div>
+                    <div class="node-text">{{ node.data.text || '...' }}</div>
+                </div>
+                <div v-else-if="node.type === 'choice'" class="node-text">
+                    {{ node.data.text || 'Selection Prompt' }}
+                </div>
+                <div v-else-if="node.type === 'music'" class="node-special">
+                    🎵 {{ node.data.musicName || 'No Track Selected' }}
+                </div>
+                <div v-else-if="node.type === 'character'" class="node-special">
+                    👤 {{ node.data.characterName || 'No Character' }}
+                    <span class="sub-detail">{{ node.data.action || 'Show' }}</span>
+                </div>
+                <!-- Default/Fallback -->
+                <div v-else class="node-text">{{ node.data.text || node.type }}</div>
             </div>
 
             <!-- Outputs Column -->
@@ -146,6 +165,21 @@ const ports = computed(() => {
     align-items: flex-end; /* Right align */
     justify-content: flex-start;
     margin-right: -8px; /* Pull outside right border */
+}
+
+.node-special {
+    font-family: monospace;
+    font-size: 0.85rem;
+    color: hsl(var(--text-main));
+    opacity: 0.9;
+    display: flex;
+    flex-direction: column;
+}
+
+.sub-detail {
+    font-size: 0.75rem;
+    opacity: 0.6;
+    margin-top: 2px;
     margin-left: auto; /* Push to right */
 }
 

@@ -18,6 +18,14 @@ const updateNodeData = (key: string, value: any) => {
     emit('update:node', updated);
 };
 
+const updateNodeRoot = (key: keyof ScriptNode, value: any) => {
+    const updated = {
+        ...props.selectedNode,
+        [key]: value
+    };
+    emit('update:node', updated);
+};
+
 const addOption = () => {
     const currentOptions = props.selectedNode.data.options || [];
     const newOption = { id: `opt_${Date.now()}`, text: 'New Choice' };
@@ -46,16 +54,38 @@ const updateOption = (idx: number, text: string) => {
             <input type="text" :value="selectedNode.type" disabled class="input-disabled" />
         </div>
 
+        <div class="form-group">
+            <label>Node Name (Label)</label>
+            <input 
+                type="text" 
+                :value="selectedNode.label || ''" 
+                @input="e => updateNodeRoot('label', (e.target as HTMLInputElement).value)"
+                placeholder="e.g. Intro Dialogue"
+            />
+        </div>
+
         <!-- Dialogue Node -->
         <template v-if="selectedNode.type === 'text'">
             <div class="form-group">
                 <label>Character</label>
-                <input 
-                    type="text" 
-                    :value="selectedNode.data.character || ''" 
-                    @input="e => updateNodeData('character', (e.target as HTMLInputElement).value)"
-                    placeholder="e.g. Hero" 
-                />
+                <div class="char-select-row" v-if="project && project.characters">
+                    <select 
+                        :value="selectedNode.data.characterId || ''" 
+                        @change="e => {
+                           const val = (e.target as HTMLSelectElement).value;
+                           updateNodeData('characterId', val);
+                           // Store name for fallback display
+                           const char = project?.characters[val];
+                           if (char) updateNodeData('character', char.name);
+                        }"
+                    >
+                        <option value="">(No Character)</option>
+                        <option v-for="char in project.characters" :key="char.id" :value="char.id">
+                            {{ char.name }}
+                        </option>
+                    </select>
+                </div>
+                <!-- Fallback manual input if wanted, or just rely on IDs -->
             </div>
             <div class="form-group">
                 <label>Dialogue Text</label>
@@ -103,7 +133,7 @@ const updateOption = (idx: number, text: string) => {
                     @change="e => updateNodeData('targetSeasonId', (e.target as HTMLSelectElement).value)"
                 >
                     <option value="">Select Season</option>
-                    <option v-for="s in Object.values(project.seasons)" :key="s.id" :value="s.id">
+                    <option v-for="s in Object.values(project.seasons) as any[]" :key="s.id" :value="s.id">
                         {{ s.name }}
                     </option>
                 </select>
@@ -116,12 +146,14 @@ const updateOption = (idx: number, text: string) => {
                     @change="e => updateNodeData('targetEpisodeId', (e.target as HTMLSelectElement).value)"
                 >
                     <option value="">Select Episode</option>
-                    <option v-for="ep in Object.values(project.seasons[selectedNode.data.targetSeasonId]?.episodes || {})" :key="ep.id" :value="ep.id">
+                    <option v-for="ep in Object.values(project.seasons[selectedNode.data.targetSeasonId]?.episodes || {}) as any[]" :key="ep.id" :value="ep.id">
                         {{ ep.name }}
                     </option>
                 </select>
             </div>
 
+
+            
             <div class="form-group" v-if="project && selectedNode.data.targetEpisodeId && selectedNode.data.targetSeasonId">
                 <label>Target Page</label>
                 <select 
@@ -129,11 +161,114 @@ const updateOption = (idx: number, text: string) => {
                     @change="e => updateNodeData('targetPageId', (e.target as HTMLSelectElement).value)"
                 >
                     <option value="">Select Page</option>
-                    <option v-for="p in Object.values(project.seasons[selectedNode.data.targetSeasonId].episodes[selectedNode.data.targetEpisodeId]?.pages || {})" :key="p.id" :value="p.id">
+                    <option v-for="p in Object.values(project.seasons[selectedNode.data.targetSeasonId].episodes[selectedNode.data.targetEpisodeId]?.pages || {}) as any[]" :key="p.id" :value="p.id">
                         {{ p.name }}
                     </option>
                 </select>
             </div>
+         </template>
+
+         <!-- Music Node -->
+         <template v-else-if="selectedNode.type === 'music'">
+             <div class="form-group">
+                 <label>Music Track Name</label>
+                 <input 
+                     type="text" 
+                     :value="selectedNode.data.musicName || ''" 
+                     @input="e => updateNodeData('musicName', (e.target as HTMLInputElement).value)" 
+                     placeholder="e.g. bgm_happy_01"
+                 />
+                 <!-- Future: Asset Browser Picker -->
+             </div>
+             <div class="form-group">
+                 <label>Action</label>
+                 <select 
+                    :value="selectedNode.data.action || 'play'" 
+                    @change="e => updateNodeData('action', (e.target as HTMLSelectElement).value)"
+                 >
+                     <option value="play">Play (Loop)</option>
+                     <option value="play_once">Play Once</option>
+                     <option value="stop">Stop Music</option>
+                 </select>
+             </div>
+             <div class="form-group">
+                 <label>Volume (0-100)</label>
+                 <input 
+                     type="number" 
+                     min="0" max="100"
+                     :value="selectedNode.data.volume ?? 100" 
+                     @input="e => updateNodeData('volume', parseInt((e.target as HTMLInputElement).value))" 
+                 />
+             </div>
+         </template>
+
+         <!-- Character Action Node -->
+         <template v-else-if="selectedNode.type === 'character'">
+             <div class="form-group">
+                 <label>Character</label>
+                 <!-- Reuse character selector if available, or text input -->
+                 <div class="char-select-row" v-if="project && project.characters">
+                    <select 
+                        :value="selectedNode.data.characterId || ''" 
+                        @change="e => {
+                           const val = (e.target as HTMLSelectElement).value;
+                           updateNodeData('characterId', val);
+                           const char = project?.characters[val];
+                           if (char) updateNodeData('characterName', char.name);
+                        }"
+                    >
+                        <option value="">(Select Character)</option>
+                        <option v-for="char in project.characters" :key="char.id" :value="char.id">
+                            {{ char.name }}
+                        </option>
+                    </select>
+                 </div>
+             </div>
+             <div class="form-group">
+                 <label>Action</label>
+                 <select 
+                    :value="selectedNode.data.action || 'show'" 
+                    @change="e => updateNodeData('action', (e.target as HTMLSelectElement).value)"
+                 >
+                     <option value="show">Show</option>
+                     <option value="hide">Hide</option>
+                     <option value="move">Move</option>
+                     <option value="expression">Change Expression</option>
+                 </select>
+             </div>
+             <div class="form-group" v-if="selectedNode.data.action === 'show' || selectedNode.data.action === 'expression'">
+                 <label>Sprite / Expression</label>
+                 <input 
+                     type="text" 
+                     :value="selectedNode.data.sprite || ''" 
+                     @input="e => updateNodeData('sprite', (e.target as HTMLInputElement).value)" 
+                     placeholder="e.g. happy, sad, default"
+                 />
+             </div>
+         </template>
+
+         <!-- Background Node -->
+         <template v-else-if="selectedNode.type === 'background'">
+             <div class="form-group">
+                 <label>Background Image Name</label>
+                 <input 
+                     type="text" 
+                     :value="selectedNode.data.image || ''" 
+                     @input="e => updateNodeData('image', (e.target as HTMLInputElement).value)" 
+                     placeholder="e.g. classroom_day"
+                 />
+             </div>
+             <div class="form-group">
+                 <label>Transition Effect</label>
+                 <select 
+                    :value="selectedNode.data.transition || 'fade'" 
+                    @change="e => updateNodeData('transition', (e.target as HTMLSelectElement).value)"
+                 >
+                     <option value="none">None (Instant)</option>
+                     <option value="fade">Fade</option>
+                     <option value="slide">Slide</option>
+                 </select>
+             </div>
          </template>
 
     </div>

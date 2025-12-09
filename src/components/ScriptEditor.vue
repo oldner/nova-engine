@@ -69,8 +69,7 @@ const getNodePorts = (type: string, data?: any) => {
     const t = type.toLowerCase();
     switch (t) {
         case 'start': return { inputs: [], outputs: [{ id: 'flow', label: '' }] };
-        case 'text': 
-        case 'dialogue': return { inputs: [{ id: 'in', label: '' }], outputs: [{ id: 'flow', label: '' }] };
+        case 'text': return { inputs: [{ id: 'in', label: '' }], outputs: [{ id: 'flow', label: '' }] };
         case 'choice': {
             const options = data?.options || [];
             if (options.length === 0) return { inputs: [{ id: 'in', label: '' }], outputs: [] };
@@ -79,7 +78,12 @@ const getNodePorts = (type: string, data?: any) => {
                 outputs: options.map((opt: any) => ({ id: `out-${opt.id}`, label: opt.text })) 
             };
         }
-        case 'set_flag': return { inputs: [{ id: 'in', label: '' }], outputs: [{ id: 'flow', label: '' }] };
+        case 'set_variable': 
+        case 'check_variable':
+        case 'music':
+        case 'character':
+        case 'background': return { inputs: [{ id: 'in', label: '' }], outputs: [{ id: 'flow', label: '' }] };
+        
         case 'change_page': return { inputs: [{ id: 'in', label: '' }], outputs: [] };
         default: return { inputs: [{ id: 'in', label: '' }], outputs: [{ id: 'flow', label: '' }] };
     }
@@ -370,8 +374,12 @@ onUnmounted(() => {
         <template v-if="contextMenuTarget === 'canvas'">
             <div class="menu-item" @click="addNode('text')">💬 Add Dialogue</div>
             <div class="menu-item" @click="addNode('choice')">🔀 Add Choice</div>
+            <div class="menu-item" @click="addNode('music')">🎵 Add Music</div>
+            <div class="menu-item" @click="addNode('character')">👤 Add Character</div>
+            <div class="menu-item" @click="addNode('background')">🖼️ Add Background</div>
             <div class="menu-item" @click="addNode('change_page')">🔗 Change Page</div>
-            <div class="menu-item" @click="addNode('set_flag')">🚩 Set Flag</div>
+            <div class="menu-item" @click="addNode('set_variable')">🚩 Set Variable</div>
+            <div class="menu-item" @click="addNode('check_variable')">❓ Check Variable</div>
         </template>
         <template v-else-if="contextMenuTarget === 'connection'">
             <div class="menu-item delete" @click="deleteConnection">🗑️ Delete</div>

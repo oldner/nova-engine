@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
-import SceneCanvas from './components/SceneCanvas.vue';
-import InspectorPanel from './components/InspectorPanel.vue';
-import ScriptEditor from './components/ScriptEditor.vue';
-import ProjectExplorer from './components/ProjectExplorer.vue';
+import type { SceneElement, ScriptNode } from './types';
+import CharacterManager from './components/CharacterManager.vue';
+import DialogueOverlay from './components/DialogueOverlay.vue';
 import GameRuntime from './components/GameRuntime.vue';
+import ProjectExplorer from './components/ProjectExplorer.vue';
+import SceneCanvas from './components/SceneCanvas.vue';
+import ScriptEditor from './components/ScriptEditor.vue';
+import InspectorPanel from './components/InspectorPanel.vue';
 import { useProject } from './composables/useProject';
 
 // --- Composable Usage ---
@@ -24,15 +27,62 @@ const {
   updateActiveSceneElement,
   addElementToActiveScene,
   updateScriptNode,
-  setActiveGraph
+  setActiveGraph,
+  createCharacter,
+  updateCharacter,
+  deleteCharacter,
+  deleteSceneElement,
+  reorderSceneElements
 } = useProject();
 
 // --- View State ---
 const currentView = ref<'scene' | 'script'>('scene');
 const isPlaying = ref(false);
+const showCharacterManager = ref(false);
+const showPreviewOverlay = ref(false);
+
+// Generate preview text based on active node or placeholder
+const previewText = computed(() => {
+    if (activeNode.value && (activeNode.value.type === 'text' || activeNode.value.type === 'choice')) {
+        return activeNode.value.data.text || '[Empty Text Node]';
+    }
+    return "Preview Dialogue Text... Select a text node to see it here.";
+});
+
+const previewCharacter = computed(() => {
+    if (activeNode.value && activeNode.value.type === 'text') {
+        // Try to find character name from ID if possible
+        if (activeNode.value.data.characterId && currentProject.value?.characters) {
+             const char = currentProject.value.characters[activeNode.value.data.characterId];
+             if (char) return char.name;
+        }
+        return activeNode.value.data.character || 'Character Name';
+    }
+    return 'Character Name';
+});
 
 const togglePlay = () => {
     isPlaying.value = !isPlaying.value;
+};
+
+const toggleCharacterManager = () => {
+    showCharacterManager.value = !showCharacterManager.value;
+};
+
+const addDialogueLayer = () => {
+    const newId = addElementToActiveScene({
+        type: 'dialogue',
+        content: 'New Dialogue Box',
+        width: 600,
+        height: 200,
+        x: 100,
+        y: 400, // Bottom third typically
+        properties: {}
+    }, 100, 400);
+    
+    if (newId) {
+        selectedElementId.value = newId;
+    }
 };
 
 // Wrapper for save to handle UI-specific notifications if needed
@@ -47,11 +97,11 @@ const selectedNodeId = ref<string | null>(null);
 
 // Derived Selection
 const activeElement = computed(() => { 
-    return activeScene.value?.elements.find(el => el.id === selectedElementId.value) || null;
+    return activeScene.value?.elements.find((element: SceneElement) => element.id === selectedElementId.value) || null;
 });
 
 const activeNode = computed(() => {
-    return activeScriptGraph.value.nodes.find(n => n.id === selectedNodeId.value) || null;
+    return activeScriptGraph.value.nodes.find((node: ScriptNode) => node.id === selectedNodeId.value) || null;
 });
 
 // --- Handlers ---
@@ -81,6 +131,8 @@ const handleGraphUpdate = (g: any) => {
     setActiveGraph(g);
 };
 
+
+
 onMounted(() => {
     initProject();
 });
@@ -93,9 +145,21 @@ onMounted(() => {
     <GameRuntime 
         v-if="isPlaying" 
         :script-graph="activeScriptGraph"
+        :scene="activeScene"
         @close="isPlaying = false"
         @change-page="handleRuntimeChangePage"
     />
+
+    <!-- Character Manager Overlay -->
+    <div class="overlay-modal" v-if="showCharacterManager && currentProject">
+        <CharacterManager 
+            :characters="currentProject.characters"
+            @create="createCharacter"
+            @update="updateCharacter"
+            @delete="deleteCharacter"
+            @close="showCharacterManager = false"
+        />
+    </div>
 
     <!-- Left Sidebar: Project/Assets -->
     <aside class="sidebar-left glass-panel">
@@ -149,7 +213,15 @@ onMounted(() => {
             <span v-if="isPlaying" class="status-playing">[PLAYING]</span>
           </span>
 
+           <div class="tool-options" v-if="currentView === 'scene'">
+             <label class="toggle-label">
+                <input type="checkbox" v-model="showPreviewOverlay" />
+                Preview Overlay
+             </label>
+           </div>
+
           <div class="action-group">
+            <button class="btn btn-ghost" @click="toggleCharacterManager">Characters</button>
             <button class="btn btn-ghost" @click="saveProject">Save Project</button>
             <button class="btn" :class="{ 'btn-accent': isPlaying }" @click="togglePlay">{{ isPlaying ? 'Stop' : 'Play' }}</button>
           </div>
@@ -159,11 +231,23 @@ onMounted(() => {
       <div class="view-container" v-if="currentView === 'scene'">
           <SceneCanvas 
             v-if="activeScene"
-            :scene="activeScene" 
+            :scene="activeScene"
+            :preview-text="previewText"
+            :preview-character="previewCharacter" 
             @element-select="handleElementSelect"
             @element-drop="handleElementDropTrigger"
           />
-          <div v-else class="empty-state">
+          
+          <!-- WYSIWYG Preview Overlay -->
+          <div v-if="showPreviewOverlay" class="preview-layer">
+             <DialogueOverlay 
+                :text="previewText"
+                :character-name="previewCharacter"
+                :choices="[]"
+             />
+          </div>
+
+          <div v-else-if="!activeScene" class="empty-state">
             Select a Page to Edit
           </div>
       </div>
@@ -187,10 +271,15 @@ onMounted(() => {
       </div>
       <InspectorPanel 
         :project="currentProject"
+        :view-mode="currentView"
         :selected-element="currentView === 'scene' ? activeElement : null"
         :selected-node="currentView === 'script' ? activeNode : null"
         @update:element="updateActiveSceneElement"
         @update:node="updateScriptNode"
+        @select-element="handleElementSelect"
+        @delete-element="deleteSceneElement"
+        @reorder-elements="reorderSceneElements"
+        @add-element="(type) => { if(type === 'dialogue') addDialogueLayer() }"
       />
     </aside>
   </div>
@@ -259,5 +348,63 @@ onMounted(() => {
 .btn-accent {
     background: hsl(var(--accent-primary));
     color: white;
+}
+
+.overlay-modal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 400px;
+    max-height: 90vh; /* Allow it to fit on screen */
+    height: auto;     /* Grow with content */
+    display: flex;
+    flex-direction: column;
+    z-index: 1000;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    border-radius: 8px;
+    overflow: hidden; /* Clip children */
+    background: hsl(var(--bg-panel)); /* Ensure background */
+}
+
+.preview-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none; /* Let clicks pass through to canvas */
+    z-index: 50;
+}
+
+.tool-options {
+    display: flex;
+    align-items: center;
+    margin-right: 16px;
+}
+
+.preview-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.node-selector {
+    background: hsla(var(--bg-panel), 0.5);
+    border: 1px solid hsl(var(--glass-border));
+    color: hsl(var(--text-main));
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 0.85rem;
+    max-width: 200px;
+}
+
+.toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9rem;
+    color: hsl(var(--text-muted));
+    cursor: pointer;
 }
 </style>

@@ -60,24 +60,28 @@ const showMorePages = (episodeId: string) => {
 // Return a filtered structure, or full structure if search is empty
 const filteredSeasons = computed(() => {
     const query = searchQuery.value.toLowerCase();
-    if (!query) return props.project.seasons;
+    if (!query) return props.project.seasons || {};
 
     const result: Record<string, Season> = {};
-    
+    if (!props.project.seasons) return {};
+
     for (const [sId, season] of Object.entries(props.project.seasons)) {
         // Check filtering deep
         const filteredEpisodes: Record<string, Episode> = {};
+        if (!season.episodes) continue;
         
         for (const [eId, episode] of Object.entries(season.episodes)) {
              // Filter Pages
              const filteredPages: Record<string, Page> = {};
              let hasPageMatch = false;
              
+             if (episode.pages) {
              for (const [pId, page] of Object.entries(episode.pages)) {
                  if (page.name.toLowerCase().includes(query)) {
                      filteredPages[pId] = page;
                      hasPageMatch = true;
                  }
+             }
              }
 
              // Include episode if Name matches OR it has matching pages
@@ -100,6 +104,7 @@ const filteredSeasons = computed(() => {
 
 // Helper to get paginated pages list
 const getVisiblePages = (episodeId: string, pages: Record<string, Page>) => {
+    if (!pages) return [];
     const allPages = Object.values(pages);
     // If searching, show ALL (filtering already reduced the set)
     if (searchQuery.value) return allPages;
@@ -111,7 +116,8 @@ const getVisiblePages = (episodeId: string, pages: Record<string, Page>) => {
 
 // ... Creation Handlers ...
 const handleCreateSeason = () => {
-    const name = prompt("Season Name:", `Season ${Object.keys(props.project.seasons).length + 1}`);
+    const count = props.project.seasons ? Object.keys(props.project.seasons).length : 0;
+    const name = prompt("Season Name:", `Season ${count + 1}`);
     if (name) emit('create-season', name);
 };
 

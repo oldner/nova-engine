@@ -1,5 +1,5 @@
 import { ref, computed } from 'vue';
-import type { Project, ScriptGraph, Page, SceneElement, ScriptNode } from '../types';
+import type { Project, ScriptGraph, Page, SceneElement, ScriptNode, Character } from '../types';
 import { api } from '../api';
 
 // Singleton state could be defined outside if we want it global across components
@@ -28,21 +28,54 @@ export function useProject() {
 
     const initProject = async () => {
         try {
-            if (!(window as any).__TAURI_INTERNALS__) return;
-            let project = await api.getCurrentProject();
+            // Try to load from backend
+            let project = await api.getCurrentProject().catch(() => null);
+
+            // If backend returns null or fails, try creating one
             if (!project) {
-                console.log('No active project found. Creating new default project...');
-                project = await api.createProject("My Nova Project");
+                console.log('No active project found. attempting creation...');
+                project = await api.createProject("My Nova Project").catch(() => null);
             }
-            if (project) {
-                currentProject.value = project;
-                // If there's an active page, load its script
-                if (project.activePageId) {
-                    loadScriptForPage(project.activePageId);
-                }
+
+            // If still null (backend offline?), use in-memory fallback
+            if (!project) {
+                console.warn("Backend unavailable. Using in-memory fallback.");
+                project = {
+                    name: "Offline Project",
+                    width: 1920,
+                    height: 1080,
+                    seasons: {},
+                    characters: {},
+                    scriptGraphs: {},
+                    activeSeasonId: null,
+                    activeEpisodeId: null,
+                    activePageId: null
+                } as Project;
             }
+
+            currentProject.value = project;
+
+            // If there's an active page, load its script
+            if (project.activePageId) {
+                loadScriptForPage(project.activePageId);
+            }
+
         } catch (e) {
             console.error("Failed to initialize project:", e);
+            // Fallback for safety
+            if (!currentProject.value) {
+                currentProject.value = {
+                    name: "Recovery Project",
+                    width: 1920,
+                    height: 1080,
+                    seasons: {},
+                    characters: {},
+                    scriptGraphs: {},
+                    activeSeasonId: null,
+                    activeEpisodeId: null,
+                    activePageId: null
+                } as Project;
+            }
         }
     };
 
@@ -147,6 +180,32 @@ export function useProject() {
         api.saveProject();
     };
 
+    // --- Character Operations ---
+
+    const createCharacter = (name: string, color: string) => {
+        if (!currentProject.value) return;
+        if (!currentProject.value.characters) currentProject.value.characters = {};
+
+        const id = `char_${Date.now()}`;
+        currentProject.value.characters[id] = { id, name, color };
+        api.saveProject();
+    };
+
+    const updateCharacter = (id: string, updates: Partial<Character>) => {
+        if (!currentProject.value || !currentProject.value.characters) return;
+        const char = currentProject.value.characters[id];
+        if (char) {
+            currentProject.value.characters[id] = { ...char, ...updates };
+            api.saveProject();
+        }
+    };
+
+    const deleteCharacter = (id: string) => {
+        if (!currentProject.value || !currentProject.value.characters) return;
+        delete currentProject.value.characters[id];
+        api.saveProject();
+    };
+
     // --- Scene & Node Helpers ---
 
     const updateActiveSceneElement = (updatedElement: SceneElement) => {
@@ -205,6 +264,35 @@ export function useProject() {
         activeScriptGraph.value = g;
     };
 
+    const deleteSceneElement = (elementId: string) => {
+        if (!activeScene.value || !currentProject.value) return;
+        const page = activeScene.value;
+        const index = page.elements.findIndex(el => el.id === elementId);
+        if (index !== -1) {
+            page.elements.splice(index, 1);
+            const p = currentProject.value;
+            if (p.activeSeasonId && p.activeEpisodeId) {
+                api.savePage(p.activeSeasonId, p.activeEpisodeId, page).catch(console.error);
+            }
+        }
+    };
+
+    const reorderSceneElements = (newOrder: SceneElement[]) => {
+        if (!activeScene.value || !currentProject.value) return;
+
+        // Update Z-Index based on array order
+        const page = activeScene.value;
+        page.elements = newOrder.map((el, index) => ({
+            ...el,
+            zIndex: index
+        }));
+
+        const p = currentProject.value;
+        if (p.activeSeasonId && p.activeEpisodeId) {
+            api.savePage(p.activeSeasonId, p.activeEpisodeId, page).catch(console.error);
+        }
+    };
+
     return {
         currentProject,
         activeScene,
@@ -220,7 +308,12 @@ export function useProject() {
         deletePage,
         updateActiveSceneElement,
         addElementToActiveScene,
+        deleteSceneElement,
+        reorderSceneElements,
         updateScriptNode,
-        setActiveGraph
+        setActiveGraph,
+        createCharacter,
+        updateCharacter,
+        deleteCharacter
     };
 }

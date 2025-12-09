@@ -2,7 +2,7 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue';
 import type { ViewportState, SceneData } from '../types';
 
-defineProps<{
+const props = defineProps<{
   scene: SceneData;
 }>();
 
@@ -14,8 +14,11 @@ const emit = defineEmits<{
 
 const containerRef = ref<HTMLElement | null>(null);
 const viewport = ref<ViewportState>({ x: 0, y: 0, scale: 1 });
-const isDragging = ref(false);
+const isDragging = ref(false); // Viewport dragging
 const lastMousePos = ref({ x: 0, y: 0 });
+
+// Element Dragging State
+const draggedElementId = ref<string | null>(null);
 
 // Grid Style Calculation
 const gridStyle = computed(() => {
@@ -65,20 +68,37 @@ const handleMouseDown = (e: MouseEvent) => {
 };
 
 const handleMouseMove = (e: MouseEvent) => {
-  if (!isDragging.value) return;
+  // 1. Viewport Panning
+  if (isDragging.value) {
+      const dx = e.clientX - lastMousePos.value.x;
+      const dy = e.clientY - lastMousePos.value.y;
 
-  const dx = e.clientX - lastMousePos.value.x;
-  const dy = e.clientY - lastMousePos.value.y;
+      viewport.value.x += dx;
+      viewport.value.y += dy;
 
-  viewport.value.x += dx;
-  viewport.value.y += dy;
+      lastMousePos.value = { x: e.clientX, y: e.clientY };
+      emit('update:viewport', viewport.value);
+      return;
+  }
 
-  lastMousePos.value = { x: e.clientX, y: e.clientY };
-  emit('update:viewport', viewport.value);
+  // 2. Element Dragging
+  if (draggedElementId.value) {
+      const dx = (e.clientX - lastMousePos.value.x) / viewport.value.scale;
+      const dy = (e.clientY - lastMousePos.value.y) / viewport.value.scale;
+
+      const element = props.scene.elements.find(el => el.id === draggedElementId.value);
+      if (element) {
+          element.x += dx;
+          element.y += dy;
+      }
+
+      lastMousePos.value = { x: e.clientX, y: e.clientY };
+  }
 };
 
 const handleMouseUp = () => {
   isDragging.value = false;
+  draggedElementId.value = null;
 };
 
 const handleKeyDown = (e: KeyboardEvent) => {
@@ -136,6 +156,16 @@ const handleDrop = (e: DragEvent) => {
     }
 };
 
+// Element Interaction
+const handleElementMouseDown = (e: MouseEvent, element: any) => {
+    e.stopPropagation(); // Prevent canvas drag
+    emit('element-select', element.id);
+
+    // Start Dragging
+    draggedElementId.value = element.id;
+    lastMousePos.value = { x: e.clientX, y: e.clientY };
+};
+
 // Global event listeners
 onMounted(() => {
   window.addEventListener('mouseup', handleMouseUp);
@@ -151,11 +181,7 @@ onUnmounted(() => {
   window.removeEventListener('keyup', handleKeyUp);
 });
 
-// Element Interaction
-const handleElementClick = (e: MouseEvent, elementId: string) => {
-    e.stopPropagation(); // Prevent canvas drag from stealing this if using same button
-    emit('element-select', elementId);
-};
+
 </script>
 
 <template>
@@ -183,9 +209,10 @@ const handleElementClick = (e: MouseEvent, elementId: string) => {
           top: `${element.y}px`,
           width: `${element.width}px`,
           height: `${element.height}px`,
-          zIndex: element.zIndex
+          zIndex: element.zIndex,
+          display: element.visible === false ? 'none' : 'flex'
         }"
-        @mousedown="(e) => handleElementClick(e, element.id)"
+        @mousedown="(e) => handleElementMouseDown(e, element)"
        >
          <slot name="element" :element="element">
            <!-- Default renderer if no slot provided -->
