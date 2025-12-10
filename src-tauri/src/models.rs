@@ -9,12 +9,12 @@ pub struct Project {
     pub height: u32,
     pub seasons: HashMap<String, Season>,
     pub characters: HashMap<String, Character>,
-    #[serde(default)] 
+    #[serde(default)]
     pub script_graphs: HashMap<String, ScriptGraph>,
     // Navigation State
     pub active_season_id: Option<String>,
     pub active_episode_id: Option<String>,
-    pub active_page_id: Option<String>,
+    pub active_scene_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -30,12 +30,12 @@ pub struct Season {
 pub struct Episode {
     pub id: String,
     pub name: String,
-    pub pages: HashMap<String, Page>,
+    pub scenes: HashMap<String, Scene>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct Page {
+pub struct Scene {
     pub id: String,
     pub name: String,
     pub background: Option<String>,
@@ -43,11 +43,12 @@ pub struct Page {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "lowercase")] // Frontend sends "dialogue", "image" (SceneElement type)
 pub enum ElementType {
     Text,
     Image,
     Choice,
+    Dialogue, // "dialogue" type used in frontend for Dialogue Box
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -62,6 +63,7 @@ pub struct SceneElement {
     pub height: f32,
     pub content: String,
     pub z_index: i32,
+    #[serde(default)]
     pub properties: HashMap<String, String>,
 }
 
@@ -86,19 +88,25 @@ pub struct ScriptGraph {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "kebab-case")] // e.g. "dialogue-node", "choice-node"
+#[serde(rename_all = "snake_case")] // Matches frontend: text, choice, change_scene, etc.
 pub enum NodeType {
     Start,
-    Dialogue,
+    End,
+    Text,
     Choice,
-    Jump,
-    SetFlag,
+    SetVariable,
+    CheckVariable,
+    ChangeScene,
+    Music,
+    Character,
+    SceneNode,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ScriptNode {
     pub id: String,
+    pub label: Option<String>,
     #[serde(rename = "type")]
     pub node_type: NodeType,
     pub x: f32,
@@ -120,30 +128,39 @@ impl Default for Project {
     fn default() -> Self {
         let mut seasons = HashMap::new();
         let mut episodes = HashMap::new();
-        let mut pages = HashMap::new();
+        let mut scenes = HashMap::new();
 
         // Create Default Content
-        let page_id = "page_1".to_string();
-        pages.insert(page_id.clone(), Page {
-            id: page_id.clone(),
-            name: "Page 1".to_string(),
-            background: None,
-            elements: vec![],
-        });
+        let scene_id = "scene_1".to_string();
+        scenes.insert(
+            scene_id.clone(),
+            Scene {
+                id: scene_id.clone(),
+                name: "Scene 1".to_string(),
+                background: None,
+                elements: vec![],
+            },
+        );
 
         let episode_id = "ep_1".to_string();
-        episodes.insert(episode_id.clone(), Episode {
-            id: episode_id.clone(),
-            name: "Episode 1".to_string(),
-            pages,
-        });
+        episodes.insert(
+            episode_id.clone(),
+            Episode {
+                id: episode_id.clone(),
+                name: "Episode 1".to_string(),
+                scenes,
+            },
+        );
 
         let season_id = "s_1".to_string();
-        seasons.insert(season_id.clone(), Season {
-            id: season_id.clone(),
-            name: "Season 1".to_string(),
-            episodes,
-        });
+        seasons.insert(
+            season_id.clone(),
+            Season {
+                id: season_id.clone(),
+                name: "Season 1".to_string(),
+                episodes,
+            },
+        );
 
         Self {
             name: "New Project".to_string(),
@@ -154,7 +171,7 @@ impl Default for Project {
             script_graphs: HashMap::new(),
             active_season_id: Some(season_id),
             active_episode_id: Some(episode_id),
-            active_page_id: Some(page_id),
+            active_scene_id: Some(scene_id),
         }
     }
 }

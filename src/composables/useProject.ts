@@ -1,6 +1,7 @@
 import { ref, computed } from 'vue';
 import type { Project, ScriptGraph, Scene, SceneElement, ScriptNode, Character } from '../types';
 import { api } from '../api';
+import { open } from '@tauri-apps/plugin-dialog';
 
 // Singleton state could be defined outside if we want it global across components
 // But for now, we'll keep it scoped or use a shared instance pattern if needed.
@@ -55,70 +56,7 @@ const migrateProjectData = (p: any): Project => {
 
 export function useProject() {
 
-    const initProject = async () => {
-        try {
-            // Try to load from backend
-            let projectData: any = await api.getCurrentProject().catch(() => null);
-
-            // If backend returns null or fails, try creating one
-            if (!projectData) {
-                console.log('No active project found. attempting creation...');
-                projectData = await api.createProject("My Nova Project").catch(() => null);
-            }
-
-            // If still null (backend offline?), use in-memory fallback
-            if (!projectData) {
-                console.warn("Backend unavailable. Using in-memory fallback.");
-                projectData = {
-                    name: "Offline Project",
-                    width: 1920,
-                    height: 1080,
-                    seasons: {},
-                    characters: {},
-                    scriptGraphs: {},
-                    activeSeasonId: null,
-                    activeEpisodeId: null,
-                    activeSceneId: null
-                };
-            }
-
-            // Migrate data if necessary
-            const project = migrateProjectData(projectData);
-
-            currentProject.value = project;
-
-            // If there's an active page, load its script
-            if (project.activeSceneId) {
-                loadScriptForScene(project.activeSceneId);
-            }
-
-        } catch (e) {
-            console.error("Failed to initialize project:", e);
-            // Fallback for safety
-            if (!currentProject.value) {
-                currentProject.value = {
-                    name: "Recovery Project",
-                    width: 1920,
-                    height: 1080,
-                    seasons: {},
-                    characters: {},
-                    scriptGraphs: {},
-                    activeSeasonId: null,
-                    activeEpisodeId: null,
-                    activeSceneId: null
-                } as Project;
-            }
-        }
-    };
-
-    const saveProject = async () => {
-        if (activeScene.value && currentProject.value && currentProject.value.activeSeasonId && currentProject.value.activeEpisodeId) {
-            await api.saveScene(currentProject.value.activeSeasonId, currentProject.value.activeEpisodeId, activeScene.value);
-        }
-        await api.saveProject();
-    };
-
-    // --- Navigation & Graph Loading ---
+    // --- Helpers (Must be defined before usage) ---
 
     const loadScriptForScene = (sceneId: string) => {
         if (!currentProject.value) return;
@@ -149,20 +87,91 @@ export function useProject() {
         loadScriptForScene(pId);
     };
 
+    // --- Core Actions ---
+
+    const saveProject = async () => {
+        if (currentProject.value) {
+            // Sync active scene
+            if (activeScene.value && currentProject.value.activeSeasonId && currentProject.value.activeEpisodeId) {
+                // Ensure the scene in the project structure is up to date with the reactive activeScene
+                currentProject.value.seasons[currentProject.value.activeSeasonId].episodes[currentProject.value.activeEpisodeId].scenes[activeScene.value.id] = activeScene.value;
+            }
+
+            // Sync active script graph
+            if (activeScriptGraph.value) {
+                if (!currentProject.value.scriptGraphs) currentProject.value.scriptGraphs = {};
+                currentProject.value.scriptGraphs[activeScriptGraph.value.id] = activeScriptGraph.value;
+            }
+
+            await api.saveProject(currentProject.value).catch(async (e) => {
+                console.warn("Save failed, falling back to Save As:", e);
+            });
+        }
+    };
+
+    const saveProjectAs = async (path: string) => {
+        if (currentProject.value) {
+            // Sync active scene
+            if (activeScene.value && currentProject.value.activeSeasonId && currentProject.value.activeEpisodeId) {
+                currentProject.value.seasons[currentProject.value.activeSeasonId].episodes[currentProject.value.activeEpisodeId].scenes[activeScene.value.id] = activeScene.value;
+            }
+
+            // Sync active script graph
+            if (activeScriptGraph.value) {
+                if (!currentProject.value.scriptGraphs) currentProject.value.scriptGraphs = {};
+                currentProject.value.scriptGraphs[activeScriptGraph.value.id] = activeScriptGraph.value;
+            }
+
+            await api.saveProjectAs(path, currentProject.value);
+        }
+    };
+
+    const initProject = async (data?: Project) => {
+        try {
+            let projectData: any = data;
+
+            // If no data provided, try to load current persistence from backend (if any)
+            if (!projectData) {
+                projectData = await api.getCurrentProject().catch(() => null);
+            }
+
+            // If still no data, we are in "No Project" state. 
+            // Return false to let caller know (e.g. show Welcome Screen)
+            if (!projectData) {
+                return false;
+            }
+
+            // Migrate data if necessary
+            const project = migrateProjectData(projectData);
+
+            currentProject.value = project;
+
+            // If there's an active page, load its script
+            if (project.activeSceneId) {
+                loadScriptForScene(project.activeSceneId);
+            }
+            return true;
+
+        } catch (e) {
+            console.error("Failed to initialize project:", e);
+            return false;
+        }
+    };
+
     // --- CRUD Operations ---
 
     const createSeason = (name: string) => {
         if (!currentProject.value) return;
         const id = `s_${Date.now()}`;
         currentProject.value.seasons[id] = { id, name, episodes: {} };
-        api.saveProject();
+        api.saveProject(currentProject.value);
     };
 
     const createEpisode = (sId: string, name: string) => {
         if (!currentProject.value) return;
         const id = `ep_${Date.now()}`;
         currentProject.value.seasons[sId].episodes[id] = { id, name, scenes: {} };
-        api.saveProject();
+        api.saveProject(currentProject.value);
     };
 
     const createScene = (sId: string, eId: string, name: string) => {
@@ -176,7 +185,7 @@ export function useProject() {
         };
         currentProject.value.seasons[sId].episodes[eId].scenes[id] = newScene;
         handleOpenScene(sId, eId, id);
-        api.saveProject();
+        api.saveProject(currentProject.value);
     };
 
     const deleteSeason = async (sId: string) => {
@@ -188,7 +197,7 @@ export function useProject() {
             currentProject.value.activeEpisodeId = null;
             currentProject.value.activeSceneId = null;
         }
-        api.saveProject();
+        api.saveProject(currentProject.value);
     };
 
     const deleteEpisode = async (sId: string, eId: string) => {
@@ -199,7 +208,7 @@ export function useProject() {
             currentProject.value.activeEpisodeId = null;
             currentProject.value.activeSceneId = null;
         }
-        api.saveProject();
+        api.saveProject(currentProject.value);
     };
 
     const deleteScene = async (sId: string, eId: string, pId: string) => {
@@ -209,7 +218,7 @@ export function useProject() {
         if (currentProject.value.activeSceneId === pId) {
             currentProject.value.activeSceneId = null;
         }
-        api.saveProject();
+        api.saveProject(currentProject.value);
     };
 
     // --- Character Operations ---
@@ -220,7 +229,7 @@ export function useProject() {
 
         const id = `char_${Date.now()}`;
         currentProject.value.characters[id] = { id, name, color };
-        api.saveProject();
+        api.saveProject(currentProject.value);
     };
 
     const updateCharacter = (id: string, updates: Partial<Character>) => {
@@ -228,14 +237,14 @@ export function useProject() {
         const char = currentProject.value.characters[id];
         if (char) {
             currentProject.value.characters[id] = { ...char, ...updates };
-            api.saveProject();
+            api.saveProject(currentProject.value);
         }
     };
 
     const deleteCharacter = (id: string) => {
         if (!currentProject.value || !currentProject.value.characters) return;
         delete currentProject.value.characters[id];
-        api.saveProject();
+        api.saveProject(currentProject.value);
     };
 
     // --- Scene & Node Helpers ---
@@ -246,8 +255,6 @@ export function useProject() {
         const index = page.elements.findIndex(el => el.id === updatedElement.id);
         if (index !== -1) {
             page.elements[index] = updatedElement;
-            // Debounced save could go here, for now we save on specific triggers or allow manual save
-            // But Layout.vue had auto-save logic for elements
             const p = currentProject.value;
             if (p.activeSeasonId && p.activeEpisodeId) {
                 api.saveScene(p.activeSeasonId, p.activeEpisodeId, page).catch(console.error);
@@ -325,12 +332,41 @@ export function useProject() {
         }
     };
 
+    // --- Asset Management ---
+    const assets = ref<string[]>([]);
+
+    // Refresh assets list
+    const loadAssets = async () => {
+        assets.value = await api.getProjectAssets().catch(() => []);
+    };
+
+    const importAsset = async () => {
+        const file = await open({
+            multiple: false,
+            filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg'] }]
+        });
+
+        if (file && typeof file === 'string') {
+            await api.importAsset(file);
+            await loadAssets(); // Refresh list
+        }
+    };
+
+    // Auto-load assets when project changes? 
+    // Maybe better to call it from AssetBrowser on mount.
+
     return {
+        // ... existing state ...
+        assets,
+        loadAssets,
+        importAsset,
+        // ... existing exports ...
         currentProject,
         activeScene,
         activeScriptGraph,
         initProject,
         saveProject,
+        saveProjectAs,
         handleOpenScene,
         createSeason,
         createEpisode,

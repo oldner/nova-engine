@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed } from 'vue';
+import { api } from './api';
+import { open, save } from '@tauri-apps/plugin-dialog';
 import type { SceneElement, ScriptNode } from './types';
 import CharacterManager from './components/CharacterManager.vue';
 import DialogueOverlay from './components/DialogueOverlay.vue';
@@ -15,8 +17,9 @@ const {
   currentProject, 
   activeScene, 
   activeScriptGraph, 
-  initProject, 
+  initProject,
   saveProject: saveProjectData,
+  saveProjectAs,
   handleOpenScene,
   createSeason, 
   createEpisode, 
@@ -87,8 +90,41 @@ const addDialogueLayer = () => {
 
 // Wrapper for save to handle UI-specific notifications if needed
 const saveProject = async () => {
-    await saveProjectData();
-    // Could add toast notification here
+    try {
+        await saveProjectData();
+    } catch (e) {
+        // Fallback to Save As if normal save fails (e.g. no path set)
+        await handleSaveAs();
+    }
+};
+
+const handleSaveAs = async () => {
+    const path = await save({
+        filters: [{
+            name: 'Nova Project',
+            extensions: ['novaproj']
+        }],
+        defaultPath: currentProject.value?.name || 'MyProject'
+    });
+
+    if (path) {
+        await saveProjectAs(path);
+    }
+};
+
+const handleOpenProject = async () => {
+    const selected = await open({
+        multiple: false,
+        filters: [{
+            name: 'Nova Project',
+            extensions: ['novaproj']
+        }]
+    });
+
+    if (selected && typeof selected === 'string') {
+        const project = await api.loadProject(selected);
+        initProject(project);
+    }
 };
 
 // --- Selection State (UI Only) ---
@@ -131,11 +167,6 @@ const handleGraphUpdate = (g: any) => {
     setActiveGraph(g);
 };
 
-
-
-onMounted(() => {
-    initProject();
-});
 </script>
 
 <template>
@@ -221,8 +252,10 @@ onMounted(() => {
            </div>
 
           <div class="action-group">
+            <button class="btn btn-ghost" @click="handleOpenProject" title="Open Project">📂</button>
+            <button class="btn btn-ghost" @click="saveProject" title="Save">💾</button>
+            <button class="btn btn-ghost" @click="handleSaveAs" title="Save As">💾+</button>
             <button class="btn btn-ghost" @click="toggleCharacterManager">Characters</button>
-            <button class="btn btn-ghost" @click="saveProject">Save Project</button>
             <button class="btn" :class="{ 'btn-accent': isPlaying }" @click="togglePlay">{{ isPlaying ? 'Stop' : 'Play' }}</button>
           </div>
       </div>
