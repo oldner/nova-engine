@@ -2,6 +2,9 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import type { ScriptGraph, ScriptNode, ScriptConnection } from '../types';
 import ScriptNodeComponent from './ScriptNode.vue';
+import { useHistory } from '../composables/useHistory';
+import { AddNodeCommand } from '../classes/commands/script/AddNodeCommand';
+import { RemoveNodeCommand } from '../classes/commands/script/RemoveNodeCommand';
 
 const props = defineProps<{
   graph: ScriptGraph;
@@ -155,27 +158,34 @@ const handleNodeContextMenu = (e: MouseEvent, nodeId: string) => {
     }
 };
 
+const { execute } = useHistory();
+
 const deleteNode = () => {
     if (!targetNodeId.value) return;
-
-    // 1. Remove Node
-    const nodeIndex = props.graph.nodes.findIndex(n => n.id === targetNodeId.value);
-    if (nodeIndex === -1) return;
-    props.graph.nodes.splice(nodeIndex, 1);
-
-    // 2. Remove Connections attached to this node
-    let i = props.graph.connections.length;
-    while (i--) {
-        const c = props.graph.connections[i];
-        if (c.fromNode === targetNodeId.value || c.toNode === targetNodeId.value) {
-            props.graph.connections.splice(i, 1);
-        }
+    
+    const node = props.graph.nodes.find(n => n.id === targetNodeId.value);
+    if (node) {
+        execute(new RemoveNodeCommand(node));
     }
 
     // 3. Close Menu
     showContextMenu.value = false;
     targetNodeId.value = null;
     emit('node-select', null);
+};
+
+// ... existing code ...
+
+const addNode = (type: any) => {
+    const newNode: ScriptNode = {
+        id: `node_${Date.now()}`,
+        type,
+        x: contextMenuWorldPos.value.x,
+        y: contextMenuWorldPos.value.y,
+        data: { text: "...", options: [] }
+    };
+    execute(new AddNodeCommand(newNode));
+    showContextMenu.value = false;
 };
 
 const navigateToScene = () => {
@@ -367,17 +377,7 @@ const handleKeyUp = (e: KeyboardEvent) => {
   if (e.code === 'Space') isSpacePressed.value = false;
 };
 
-const addNode = (type: any) => {
-    const newNode = {
-        id: `node_${Date.now()}`,
-        type,
-        x: contextMenuWorldPos.value.x,
-        y: contextMenuWorldPos.value.y,
-        data: { text: "...", options: [] }
-    };
-    props.graph.nodes.push(newNode);
-    showContextMenu.value = false;
-};
+
 
 
 const handleGlobalClick = () => {

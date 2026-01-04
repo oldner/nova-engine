@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed } from 'vue';
 import type { ViewportState, SceneData } from '../types';
+import AssetPreview from './AssetPreview.vue';
+import { useHistory } from '../composables/useHistory';
+import { MoveElementCommand } from '../classes/commands/scene/MoveElementCommand';
 
 const props = defineProps<{
   scene: SceneData;
@@ -19,8 +22,10 @@ const lastMousePos = ref({ x: 0, y: 0 });
 
 // Element Dragging State
 const draggedElementId = ref<string | null>(null);
+const dragStartPos = ref<{x: number, y: number} | null>(null);
+const { execute } = useHistory();
 
-// Grid Style Calculation
+const { execute } = useHistory();
 const gridStyle = computed(() => {
   const scale = viewport.value.scale;
   const gridSize = 50 * scale;
@@ -97,8 +102,24 @@ const handleMouseMove = (e: MouseEvent) => {
 };
 
 const handleMouseUp = () => {
+  if (draggedElementId.value && dragStartPos.value) {
+     const element = props.scene.elements.find(el => el.id === draggedElementId.value);
+     if (element) {
+         if (element.x !== dragStartPos.value.x || element.y !== dragStartPos.value.y) {
+             execute(new MoveElementCommand(
+                 element.id,
+                 dragStartPos.value.x,
+                 dragStartPos.value.y,
+                 element.x,
+                 element.y
+             ));
+         }
+     }
+  }
+
   isDragging.value = false;
   draggedElementId.value = null;
+  dragStartPos.value = null;
 };
 
 const handleKeyDown = (e: KeyboardEvent) => {
@@ -163,6 +184,7 @@ const handleElementMouseDown = (e: MouseEvent, element: any) => {
 
     // Start Dragging
     draggedElementId.value = element.id;
+    dragStartPos.value = { x: element.x, y: element.y };
     lastMousePos.value = { x: e.clientX, y: e.clientY };
 };
 
@@ -216,9 +238,15 @@ onUnmounted(() => {
        >
          <slot name="element" :element="element">
            <!-- Default renderer if no slot provided -->
-           <div class="default-element-renderer">
+           <!-- Default renderer if no slot provided -->
+           <div class="default-element-renderer" v-if="element.type !== 'image'">
              {{ element.content }}
            </div>
+           <AssetPreview 
+              v-else 
+              :path="element.content" 
+              class="image-element"
+           />
          </slot>
        </div>
     </div>
@@ -311,5 +339,12 @@ onUnmounted(() => {
     font-size: 0.8rem;
     font-weight: 600;
     color: hsl(var(--text-muted));
+}
+
+.image-element {
+    width: 100%;
+    height: 100%;
+    object-fit: fill; /* Or cover, depending on desired stretching behavior */
+    pointer-events: none; /* Let clicks pass to the container for selection */
 }
 </style>

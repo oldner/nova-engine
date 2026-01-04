@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { api } from './api';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import type { SceneElement, ScriptNode } from './types';
@@ -7,10 +7,12 @@ import CharacterManager from './components/CharacterManager.vue';
 import DialogueOverlay from './components/DialogueOverlay.vue';
 import GameRuntime from './components/GameRuntime.vue';
 import ProjectExplorer from './components/ProjectExplorer.vue';
+import AssetBrowser from './components/AssetBrowser.vue';
 import SceneCanvas from './components/SceneCanvas.vue';
 import ScriptEditor from './components/ScriptEditor.vue';
 import InspectorPanel from './components/InspectorPanel.vue';
 import { useProject } from './composables/useProject';
+import { useHistory } from './composables/useHistory';
 
 // --- Composable Usage ---
 const { 
@@ -40,6 +42,7 @@ const {
 
 // --- View State ---
 const currentView = ref<'scene' | 'script'>('scene');
+const activeLeftPanel = ref<'explorer' | 'assets'>('explorer');
 const isPlaying = ref(false);
 const showCharacterManager = ref(false);
 const showPreviewOverlay = ref(false);
@@ -163,9 +166,38 @@ const handleRuntimeChangeScene = (sId: string, eId: string, pId: string) => {
 };
 
 // Listen to graph updates from Editor (if any manual overrides happen)
+// Listen to graph updates from Editor (if any manual overrides happen)
 const handleGraphUpdate = (g: any) => {
     setActiveGraph(g);
 };
+
+// --- History & Shortcuts ---
+const { undo, redo, canUndo, canRedo } = useHistory();
+
+const handleGlobalKeyDown = (e: KeyboardEvent) => {
+    // Ignore if input is focused
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) {
+            redo();
+        } else {
+            undo();
+        }
+    } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        redo();
+    }
+};
+
+onMounted(() => {
+    window.addEventListener('keydown', handleGlobalKeyDown);
+});
+
+onUnmounted(() => {
+    window.removeEventListener('keydown', handleGlobalKeyDown);
+});
 
 </script>
 
@@ -194,20 +226,40 @@ const handleGraphUpdate = (g: any) => {
 
     <!-- Left Sidebar: Project/Assets -->
     <aside class="sidebar-left glass-panel">
-      <div class="panel-header">
-        Project Explorer
+      <div class="panel-header tabbed-header">
+        <button 
+            class="panel-tab" 
+            :class="{ active: activeLeftPanel === 'explorer' }"
+            @click="activeLeftPanel = 'explorer'"
+        >
+            Explorer
+        </button>
+        <button 
+            class="panel-tab" 
+            :class="{ active: activeLeftPanel === 'assets' }"
+            @click="activeLeftPanel = 'assets'"
+        >
+            Assets
+        </button>
       </div>
-      <div style="height: calc(100% - 48px); overflow: hidden;" v-if="currentProject">
-        <ProjectExplorer 
-            :project="currentProject"
-            @open-scene="handleOpenScene"
-            @create-season="createSeason"
-            @create-episode="createEpisode"
-            @create-scene="createScene"
-            @delete-season="deleteSeason"
-            @delete-episode="deleteEpisode"
-            @delete-scene="deleteScene"
-        />
+      
+      <div class="panel-content">
+        <div v-show="activeLeftPanel === 'explorer'" style="height: 100%;">
+            <ProjectExplorer 
+                v-if="currentProject"
+                :project="currentProject"
+                @open-scene="handleOpenScene"
+                @create-season="createSeason"
+                @create-episode="createEpisode"
+                @create-scene="createScene"
+                @delete-season="deleteSeason"
+                @delete-episode="deleteEpisode"
+                @delete-scene="deleteScene"
+            />
+        </div>
+        <div v-show="activeLeftPanel === 'assets'" style="height: 100%;">
+            <AssetBrowser />
+        </div>
       </div>
     </aside>
 
@@ -252,6 +304,9 @@ const handleGraphUpdate = (g: any) => {
            </div>
 
           <div class="action-group">
+            <button class="btn btn-ghost" @click="undo" :disabled="!canUndo" title="Undo (Ctrl+Z)">↩️</button>
+            <button class="btn btn-ghost" @click="redo" :disabled="!canRedo" title="Redo (Ctrl+Y)">↪️</button>
+            <div class="separator"></div>
             <button class="btn btn-ghost" @click="handleOpenProject" title="Open Project">📂</button>
             <button class="btn btn-ghost" @click="saveProject" title="Save">💾</button>
             <button class="btn btn-ghost" @click="handleSaveAs" title="Save As">💾+</button>
@@ -441,5 +496,48 @@ const handleGraphUpdate = (g: any) => {
     font-size: 0.9rem;
     color: hsl(var(--text-muted));
     cursor: pointer;
+}
+
+/* Sidebar Tabs */
+.tabbed-header {
+    display: flex;
+    gap: 0;
+    padding: 0;
+}
+
+.panel-tab {
+    flex: 1;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: hsl(var(--text-muted));
+    padding: 8px;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.panel-tab:hover {
+    background: hsla(var(--bg-panel), 0.5);
+    color: hsl(var(--text-main));
+}
+
+.panel-tab.active {
+    border-bottom: 2px solid hsl(var(--accent-primary));
+    color: hsl(var(--text-highlight));
+    font-weight: 600;
+}
+
+.panel-content {
+    flex: 1;
+    overflow: hidden;
+    height: calc(100% - 40px); /* Adjust based on header height */
+}
+
+.separator {
+    width: 1px;
+    height: 24px;
+    background-color: hsl(var(--glass-border));
+    margin: 0 8px;
+    align-self: center;
 }
 </style>

@@ -267,7 +267,8 @@ export function useProject() {
 
         const newId = `el_${Date.now()}`;
         const type = data.fileType === 'image' ? 'image' : 'text';
-        const content = data.name || 'New Element';
+        // For images, use the full path (src) as content. For text, use name or default.
+        const content = type === 'image' ? (data.src || data.name) : (data.name || 'New Element');
 
         const newElement: SceneElement = {
             id: newId,

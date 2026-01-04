@@ -197,9 +197,8 @@ fn get_project_assets(state: State<AppState>) -> Result<Vec<String>, String> {
             let entry = entry.map_err(|e| e.to_string())?;
             let path = entry.path();
             if path.is_file() {
-                if let Some(name) = path.file_name() {
-                    assets.push(name.to_string_lossy().to_string());
-                }
+                // Return absolute path string
+                assets.push(path.to_string_lossy().to_string());
             }
         }
         Ok(assets)
@@ -212,6 +211,7 @@ fn get_project_assets(state: State<AppState>) -> Result<Vec<String>, String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
         .manage(AppState {
             project: Mutex::new(None),
